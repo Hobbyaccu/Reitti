@@ -15,71 +15,101 @@
     body { margin:0; padding:0; font-family: system-ui, -apple-system, sans-serif; background:#111; color:#fff; overflow:hidden; }
     #map { position:absolute; top:0; bottom:0; left:0; right:0; }
 
-    /* Header */
-    #header {
-      position: absolute; top: 0; left: 0; right: 0; height: 56px;
-      background: rgba(0,0,0,0.75); backdrop-filter: blur(12px);
-      z-index: 1001; display: flex; align-items: center; padding: 0 16px;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-    }
-    #title { font-size: 1.25em; font-weight: 600; }
-
-    /* Controls */
+    /* Compact bottom controls – squashed for mobile */
     #controls {
-      position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%);
-      background: rgba(20,20,20,0.92); backdrop-filter: blur(16px);
-      padding: 16px 20px; border-radius: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
-      z-index: 1000; max-width: 92%; display: flex; flex-direction: column; gap: 12px; align-items: center;
+      position: absolute;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(20,20,20,0.92);
+      backdrop-filter: blur(16px);
+      padding: 8px 12px;
+      border-radius: 18px;
+      box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+      z-index: 1000;
+      max-width: 94%;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
     }
-    .btn-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .btn-row {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
     button {
-      font-size: 1.05em; padding: 14px 18px; border-radius: 14px; border: none;
-      background: var(--accent); color: white; font-weight: 600; transition: all 0.2s;
+      font-size: 0.95em;
+      padding: 9px 12px;
+      border-radius: 12px;
+      border: none;
+      background: var(--accent);
+      color: white;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: all 0.2s;
     }
-    button:active { transform: scale(0.95); background: #c00; }
-    select, input[type="range"] { font-size: 1.05em; padding: 10px 14px; border-radius: 12px; background: #222; color: #fff; border: none; }
+    button:active { transform: scale(0.94); background: #c00; }
+    .small-btn { padding: 8px 10px; font-size: 0.9em; }
 
-    /* Info */
+    select, input[type="range"] {
+      font-size: 0.95em;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: #222;
+      color: #fff;
+      border: none;
+    }
+
+    /* Info box */
     #info {
-      position: absolute; top: 70px; right: 16px;
-      background: rgba(0,0,0,0.85); backdrop-filter: blur(12px);
-      padding: 14px 18px; border-radius: 16px; font-size: 1.05em;
-      z-index: 1000; max-width: 260px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(0,0,0,0.85);
+      backdrop-filter: blur(12px);
+      padding: 12px 16px;
+      border-radius: 14px;
+      font-size: 1.0em;
+      z-index: 1000;
+      max-width: 240px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
     }
 
-    /* Saved modal */
+    /* Saved modal (unchanged) */
     #savedModal {
-      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(0,0,0,0.92); z-index: 2000; align-items: center; justify-content: center;
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.92); z-index: 2000;
+      align-items: center; justify-content: center;
     }
     #modalContent {
       background: rgba(30,30,30,0.95); backdrop-filter: blur(16px);
-      width: 92%; max-width: 380px; max-height: 75%; border-radius: 20px;
+      width: 92%; max-width: 380px; max-height: 78vh; border-radius: 20px;
       box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden;
     }
-    #modalHeader { padding: 16px; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; }
+    #modalHeader { padding: 14px 18px; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; }
     #modalList { max-height: 420px; overflow-y: auto; padding: 8px; }
-    .path-item { padding: 14px; margin: 6px; background: #222; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-    .path-item button { padding: 8px 14px; font-size: 0.95em; }
+    .path-item { padding: 12px; margin: 6px; background: #222; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
+    .path-item button { padding: 7px 12px; font-size: 0.9em; }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div id="header"><div id="title">Draw My Walk</div></div>
-
 <div id="info">Piirrä polku kartalle (freehand)</div>
 
 <div id="controls">
   <div class="btn-row">
-    <button id="clearBtn">🗑️ Tyhjennä</button>
-    <button id="saveBtn">💾 Tallenna polku</button>
-    <button id="savedBtn">📂 Tallennetut</button>
-    <button id="exportBtn">⬇️ Vie GeoJSON</button>
-    <button id="themeBtn">🌙 Tumma kartta</button>
+    <button id="clearBtn" class="small-btn">🗑️ Tyhjennä</button>
+    <button id="saveBtn" class="small-btn">💾 Tallenna</button>
+    <button id="savedBtn" class="small-btn">📂 Tallennetut</button>
+    <button id="exportBtn" class="small-btn">⬇️ Vie</button>
+    <button id="themeBtn" class="small-btn">🌙 Tumma</button>
   </div>
-  <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; justify-content:center;">
+
+  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center;">
     <label>Ääni: 
       <select id="langSelect">
         <option value="fi-FI" selected>Suomi</option>
@@ -87,16 +117,17 @@
       </select>
     </label>
     <label>Kävelynopeus: <span id="speedVal">4.5</span> km/h</label>
-    <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5" style="width:160px;">
+    <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5" style="width:140px;">
   </div>
-  <button id="playBtn" style="width:100%;">▶️ Käynnistä ääniohjaus</button>
+
+  <button id="playBtn" style="width:100%; padding:11px;">▶️ Käynnistä ääniohjaus</button>
 </div>
 
 <!-- Saved paths modal -->
 <div id="savedModal">
   <div id="modalContent">
     <div id="modalHeader">
-      <h3 style="margin:0;">Tallennetut polut</h3>
+      <h3 id="modalTitle" style="margin:0;">Tallennetut polut</h3>
       <button id="closeModal" style="background:none; color:#fff; font-size:1.8em; padding:0 12px;">×</button>
     </div>
     <div id="modalList"></div>
@@ -109,7 +140,55 @@
 <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
 
 <script>
-// ==================== VARIABLES ====================
+// ==================== TRANSLATIONS ====================
+const translations = {
+  fi: {
+    info: "Piirrä polku kartalle (freehand)",
+    clear: "🗑️ Tyhjennä",
+    save: "💾 Tallenna",
+    saved: "📂 Tallennetut",
+    export: "⬇️ Vie",
+    themeDark: "🌙 Tumma",
+    themeLight: "☀️ Vaalea",
+    playStart: "▶️ Käynnistä ääniohjaus",
+    playStop: "🔇 Pysäytä",
+    speedLabel: "Kävelynopeus:",
+    voiceLabel: "Ääni:",
+    modalTitle: "Tallennetut polut",
+    load: "Lataa",
+    delete: "Poista",
+    noPaths: "Ei tallennettuja polkuja vielä",
+    savePrompt: "Polun nimi (tai tyhjä automaattiseksi):",
+    alertDrawFirst: "Piirrä ensin polku!",
+    alertLocation: "Salli sijainti ääniohjaukselle!",
+    savedMessage: "Polku tallennettu!"
+  },
+  en: {
+    info: "Draw a path on the map (freehand)",
+    clear: "🗑️ Clear",
+    save: "💾 Save",
+    saved: "📂 Saved",
+    export: "⬇️ Export",
+    themeDark: "🌙 Dark",
+    themeLight: "☀️ Light",
+    playStart: "▶️ Start Voice",
+    playStop: "🔇 Stop",
+    speedLabel: "Walking speed:",
+    voiceLabel: "Voice:",
+    modalTitle: "Saved paths",
+    load: "Load",
+    delete: "Delete",
+    noPaths: "No saved paths yet",
+    savePrompt: "Path name (or leave empty):",
+    alertDrawFirst: "Draw a path first!",
+    alertLocation: "Location required for voice guidance!",
+    savedMessage: "Path saved!"
+  }
+};
+
+let currentLang = 'fi-FI';
+
+// ==================== SETUP ====================
 const map = L.map('map', { zoomControl: false }).setView([60.17, 24.94], 13);
 
 let currentLayer = null;
@@ -118,9 +197,9 @@ let userMarker = null;
 let guidanceEnabled = false;
 let announcedTurns = new Set();
 let currentSpeed = 4.5;
-let currentLang = 'fi-FI';
 let currentTileLayer = null;
 let savedPaths = JSON.parse(localStorage.getItem('walkPaths')) || [];
+let isDark = true;
 
 // Tile layers
 const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO' });
@@ -130,19 +209,35 @@ currentTileLayer = darkLayer;
 currentTileLayer.addTo(map);
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-// Geoman – toolbar for edit/remove only (no click-polyline)
+// Freehand only + edit tools
 map.pm.addControls({
   position: 'topleft',
   drawMarker: false, drawCircleMarker: false, drawRectangle: false,
-  drawPolygon: false, drawCircle: false, drawPolyline: false,  // disabled – we use freehand
+  drawPolygon: false, drawCircle: false, drawPolyline: false,
   editMode: true, dragMode: true, removalMode: true
 });
-
-// FREEHAND DRAWING ENABLED BY DEFAULT (drag your finger!)
 map.pm.enableDraw('Freehand', {
   freehandOptions: { fill: false },
   pathOptions: { color: '#e00', weight: 7, lineCap: 'round' }
 });
+
+// ==================== UI UPDATE FUNCTION ====================
+function updateAllTexts() {
+  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
+
+  document.getElementById('info').textContent = t.info;
+  document.getElementById('clearBtn').innerHTML = t.clear;
+  document.getElementById('saveBtn').innerHTML = t.save;
+  document.getElementById('savedBtn').innerHTML = t.saved;
+  document.getElementById('exportBtn').innerHTML = t.export;
+  document.getElementById('themeBtn').textContent = isDark ? t.themeDark : t.themeLight;
+  
+  // Play button (dynamic)
+  const playBtn = document.getElementById('playBtn');
+  playBtn.textContent = guidanceEnabled ? t.playStop : t.playStart;
+
+  document.getElementById('modalTitle').textContent = t.modalTitle;
+}
 
 // ==================== SPEED & LANGUAGE ====================
 const speedSlider = document.getElementById('speedSlider');
@@ -154,9 +249,12 @@ speedSlider.addEventListener('input', () => {
 });
 
 const langSelect = document.getElementById('langSelect');
-langSelect.addEventListener('change', () => currentLang = langSelect.value);
+langSelect.addEventListener('change', () => {
+  currentLang = langSelect.value;
+  updateAllTexts();
+});
 
-// ==================== DRAWING EVENTS ====================
+// ==================== DRAWING & INFO ====================
 map.on('pm:create', e => {
   if (currentLayer) map.removeLayer(currentLayer);
   currentLayer = e.layer;
@@ -165,25 +263,24 @@ map.on('pm:create', e => {
 });
 map.on('pm:edit', () => { if (currentLayer) { updateInfo(); analyzeTurns(); } });
 
-// ==================== INFO & TURNS ====================
 function updateInfo() {
   if (!currentLayer) return;
   const line = turf.lineString(currentLayer.getLatLngs().map(p => [p.lng, p.lat]));
   const km = turf.length(line, { units: 'kilometers' });
   const minutes = Math.round((km / currentSpeed) * 60);
   document.getElementById('info').innerHTML = `
-    <strong>Polku:</strong> ${Math.round(km*1000)} m (${km.toFixed(2)} km)<br>
-    <strong>Aika @ ${currentSpeed} km/h:</strong> ${minutes} min
+    <strong>${currentLang==='fi-FI'?'Polku':'Path'}:</strong> ${Math.round(km*1000)} m (${km.toFixed(2)} km)<br>
+    <strong>${currentLang==='fi-FI'?'Aika':'Time'} @ ${currentSpeed} km/h:</strong> ${minutes} min
   `;
 }
 
+// Turn logic + getTurnText (same as before)
 function analyzeTurns() {
   if (!currentLayer || currentLayer.getLatLngs().length < 3) return;
   turns = []; announcedTurns = new Set();
   const coords = currentLayer.getLatLngs().map(p => [p.lng, p.lat]);
   const simplified = turf.simplify(turf.lineString(coords), { tolerance: 0.0003 });
   const points = simplified.geometry.coordinates;
-
   for (let i = 1; i < points.length - 1; i++) {
     const b1 = turf.bearing(points[i-1], points[i]);
     const b2 = turf.bearing(points[i], points[i+1]);
@@ -199,6 +296,7 @@ function analyzeTurns() {
 }
 
 function getTurnText(turn) {
+  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
   if (currentLang === 'fi-FI') {
     const sharp = turn.sharpness === 'sharply' ? 'jyrkästi' : 'loivasti';
     const direction = turn.dir === 'left' ? 'vasemmalle' : 'oikealle';
@@ -232,44 +330,42 @@ function checkForTurns(lat, lng) {
 
 const playBtn = document.getElementById('playBtn');
 playBtn.addEventListener('click', () => {
-  if (!currentLayer) { alert(currentLang === 'fi-FI' ? "Piirrä ensin polku!" : "Draw a path first!"); return; }
-  if (!userMarker) { alert(currentLang === 'fi-FI' ? "Salli sijainti!" : "Location required!"); return; }
+  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
+  if (!currentLayer) { alert(t.alertDrawFirst); return; }
+  if (!userMarker) { alert(t.alertLocation); return; }
   guidanceEnabled = !guidanceEnabled;
-  playBtn.textContent = guidanceEnabled 
-    ? (currentLang === 'fi-FI' ? '🔇 Pysäytä ääniohjaus' : '🔇 Stop')
-    : (currentLang === 'fi-FI' ? '▶️ Käynnistä ääniohjaus' : '▶️ Start Voice Guidance');
-  if (guidanceEnabled) speechSynthesis.speak(new SpeechSynthesisUtterance(currentLang === 'fi-FI' ? "Ääniohjaus käynnistetty" : "Voice guidance started"));
+  playBtn.textContent = guidanceEnabled ? t.playStop : t.playStart;
+  if (guidanceEnabled) speechSynthesis.speak(new SpeechSynthesisUtterance(currentLang==='fi-FI'?"Ääniohjaus käynnistetty":"Voice guidance started"));
   else speechSynthesis.cancel();
 });
 
-// ==================== THEME TOGGLE ====================
+// ==================== THEME ====================
 const themeBtn = document.getElementById('themeBtn');
-let isDark = true;
 themeBtn.addEventListener('click', () => {
   map.removeLayer(currentTileLayer);
   isDark = !isDark;
   currentTileLayer = isDark ? darkLayer : lightLayer;
   currentTileLayer.addTo(map);
-  themeBtn.textContent = isDark ? '☀️ Vaalea kartta' : '🌙 Tumma kartta';
+  themeBtn.textContent = isDark 
+    ? translations[currentLang==='fi-FI'?'fi':'en'].themeDark 
+    : translations[currentLang==='fi-FI'?'fi':'en'].themeLight;
 });
 
-// ==================== PATH SAVING (localStorage) ====================
+// ==================== SAVING & MODAL (localized) ====================
 function saveCurrentPath() {
-  if (!currentLayer) { alert("Piirrä ensin polku!"); return; }
-  const name = prompt("Polun nimi (tai jätä tyhjäksi automaattiseksi):") || 
-               `Polku ${new Date().toLocaleDateString('fi-FI')} ${new Date().toLocaleTimeString('fi-FI', {hour:'2-digit', minute:'2-digit'})}`;
-  
+  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
+  if (!currentLayer) { alert(t.alertDrawFirst); return; }
+  const name = prompt(t.savePrompt) || `Polku ${new Date().toLocaleDateString(currentLang==='fi-FI'?'fi-FI':'en-US')}`;
   const geojson = currentLayer.toGeoJSON();
-  savedPaths.unshift({ id: Date.now(), name, geojson, date: Date.now() }); // newest first
+  savedPaths.unshift({ id: Date.now(), name, geojson, date: Date.now() });
   localStorage.setItem('walkPaths', JSON.stringify(savedPaths));
-  alert(`Polku "${name}" tallennettu!`);
+  alert(t.savedMessage);
 }
 
 document.getElementById('saveBtn').addEventListener('click', saveCurrentPath);
 
-// Export GeoJSON
 document.getElementById('exportBtn').addEventListener('click', () => {
-  if (!currentLayer) { alert("Ei polkua vietäväksi"); return; }
+  if (!currentLayer) return;
   const geo = currentLayer.toGeoJSON();
   const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geo));
   const a = document.createElement("a");
@@ -278,58 +374,47 @@ document.getElementById('exportBtn').addEventListener('click', () => {
   a.click();
 });
 
-// ==================== SAVED PATHS MODAL ====================
+// Modal
 const savedModal = document.getElementById('savedModal');
 const modalList = document.getElementById('modalList');
 
 function renderSavedPaths() {
+  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
   modalList.innerHTML = '';
   if (savedPaths.length === 0) {
-    modalList.innerHTML = '<p style="text-align:center;padding:20px;color:#888;">Ei tallennettuja polkuja vielä</p>';
+    modalList.innerHTML = `<p style="text-align:center;padding:20px;color:#888;">${t.noPaths}</p>`;
     return;
   }
   savedPaths.forEach((p, index) => {
     const div = document.createElement('div');
     div.className = 'path-item';
     div.innerHTML = `
+      <div><strong>${p.name}</strong><br><small>${new Date(p.date).toLocaleDateString(currentLang==='fi-FI'?'fi-FI':'en-US')}</small></div>
       <div>
-        <strong>${p.name}</strong><br>
-        <small>${new Date(p.date).toLocaleDateString('fi-FI')}</small>
-      </div>
-      <div>
-        <button class="loadBtn" data-index="${index}">Lataa</button>
-        <button class="deleteBtn" data-index="${index}" style="background:#555;">Poista</button>
+        <button class="loadBtn" data-index="${index}">${t.load}</button>
+        <button class="deleteBtn" data-index="${index}" style="background:#555;">${t.delete}</button>
       </div>
     `;
     modalList.appendChild(div);
   });
 
-  // Load buttons
-  modalList.querySelectorAll('.loadBtn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.index);
-      loadSavedPath(idx);
-      savedModal.style.display = 'none';
-    });
-  });
-
-  // Delete buttons
-  modalList.querySelectorAll('.deleteBtn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const idx = parseInt(btn.dataset.index);
-      if (confirm("Poistetaanko tämä polku?")) {
-        savedPaths.splice(idx, 1);
-        localStorage.setItem('walkPaths', JSON.stringify(savedPaths));
-        renderSavedPaths();
-      }
-    });
-  });
+  modalList.querySelectorAll('.loadBtn').forEach(btn => btn.addEventListener('click', () => {
+    loadSavedPath(parseInt(btn.dataset.index));
+    savedModal.style.display = 'none';
+  }));
+  modalList.querySelectorAll('.deleteBtn').forEach(btn => btn.addEventListener('click', () => {
+    if (confirm(currentLang==='fi-FI'?"Poistetaanko?":"Delete?")) {
+      savedPaths.splice(parseInt(btn.dataset.index), 1);
+      localStorage.setItem('walkPaths', JSON.stringify(savedPaths));
+      renderSavedPaths();
+    }
+  }));
 }
 
 function loadSavedPath(index) {
   if (currentLayer) map.removeLayer(currentLayer);
   const saved = savedPaths[index];
-  const coords = saved.geojson.geometry.coordinates.map(([lng, lat]) => [lat, lng]); // GeoJSON → Leaflet order
+  const coords = saved.geojson.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
   currentLayer = L.polyline(coords, { color: '#e00', weight: 7 }).addTo(map);
   updateInfo();
   analyzeTurns();
@@ -339,19 +424,16 @@ document.getElementById('savedBtn').addEventListener('click', () => {
   renderSavedPaths();
   savedModal.style.display = 'flex';
 });
-document.getElementById('closeModal').addEventListener('click', () => {
-  savedModal.style.display = 'none';
-});
+document.getElementById('closeModal').addEventListener('click', () => savedModal.style.display = 'none');
 
-// ==================== CLEAR & LOCATE (unchanged) ====================
+// Clear
 document.getElementById('clearBtn').addEventListener('click', () => {
   if (currentLayer) map.removeLayer(currentLayer);
   currentLayer = null; turns = []; announcedTurns = new Set(); guidanceEnabled = false;
-  playBtn.textContent = currentLang === 'fi-FI' ? '▶️ Käynnistä ääniohjaus' : '▶️ Start Voice Guidance';
-  document.getElementById('info').innerHTML = 'Piirrä polku kartalle (freehand)';
+  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
+  playBtn.textContent = t.playStart;
+  document.getElementById('info').textContent = t.info;
 });
-
-document.getElementById('locateBtn') || document.getElementById('locateBtn')?.addEventListener('click', () => { /* kept from previous if needed */ });
 
 // ==================== AUTO LOCATION ====================
 if (navigator.geolocation) {
@@ -361,6 +443,9 @@ if (navigator.geolocation) {
     navigator.geolocation.watchPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
   });
 }
+
+// ==================== INITIALIZE ====================
+updateAllTexts();
 </script>
 </body>
 </html>
