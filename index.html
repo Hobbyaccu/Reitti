@@ -86,6 +86,7 @@ const playBtn = document.getElementById('playBtn');
 const audioLeft = document.getElementById('audioLeft');
 const audioRight = document.getElementById('audioRight');
 const keepAliveAudio = document.getElementById('keepAliveAudio');
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
 // ==================== MAP & GEOMAN ====================
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -159,7 +160,7 @@ function analyzeTurns() {
 
 async function toggleGuidance(forceOff = false) {
 
-  await new Promise(resolve => setTimeout(resolve, 1000));
+  await delay(1000);
   
   if (guidanceEnabled || forceOff) {
     guidanceEnabled = false;
