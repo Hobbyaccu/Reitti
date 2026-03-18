@@ -1,1 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Draw My Walk</title>
 
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <!-- Geoman (free version - perfect for mobile touch) -->
+  <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
+
+  <style>
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; background:#111; color:#fff; }
+    #map { position:absolute; top:0; bottom:0; left:0; right:0; }
+    #controls {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.85);
+      padding: 12px 18px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+      z-index: 1000;
+      text-align: center;
+      max-width: 92%;
+    }
+    button, input[type="range"] {
+      font-size: 1.1em;
+      padding: 12px 20px;
+      margin: 6px;
+      border-radius: 12px;
+      border: none;
+      background: #e00;
+      color: white;
+    }
+    button:active { background: #c00; }
+    #info {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      background: rgba(0,0,0,0.85);
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 1.05em;
+      z-index: 1000;
+      max-width: 280px;
+    }
+    .leaflet-control { z-index: 999 !important; }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+<div id="info">Draw a path on the map</div>
+
+<div id="controls">
+  <button id="clearBtn">Clear Path</button>
+  <button id="locateBtn">📍 Find Me</button>
+  <button id="playBtn">▶️ Simulate Walk + Voice</button><br>
+  <label>Walking speed: <span id="speedVal">4.5</span> km/h</label>
+  <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5">
+</div>
+
+<!-- Leaflet -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Geoman -->
+<script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.js"></script>
+<!-- Turf.js (v7) -->
+<script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
+
+<script>
+// ==================== SETUP ====================
+const map = L.map('map', { zoomControl: false }).setView([51.5, -0.1], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+
+// Add zoom control to top-right (easier on mobile)
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+// Geoman controls (touch-friendly)
+map.pm.addControls({
+  position: 'topleft',
+  drawMarker: false,
+  drawCircleMarker: false,
+  drawRectangle: false,
+  drawPolygon: false,
+  drawCircle: false,
+  drawPolyline: true,
+  editMode: true,
+  dragMode: true,
+  removalMode: true,
+  cutPolygon: false
+});
+
+// Current path layer
+let currentLayer = null;
+let turns = [];
+
+// Speeds
+let currentSpeed = 4.5;
+const speedSlider = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+
+speedSlider.addEventListener('input', () => {
+  currentSpeed = parseFloat(speedSlider.value);
+  speedVal.textContent = currentSpeed.toFixed(1);
+  if (currentLayer) updateInfo();
+});
+
+// ==================== DRAWING & MEASUREMENT ====================
+map.on('pm:create', e => {
+  if (currentLayer) map.removeLayer(currentLayer); // only one path at a time
+  currentLayer = e.layer;
+  updateInfo();
+  analyzeTurns();
+});
+
+map.on('pm:edit', () => {
+  if (currentLayer) {
+    updateInfo();
+    analyzeTurns();
+  }
+});
+
+// Calculate distance & time
+function updateInfo() {
+  if (!currentLayer) return;
+  const line = turf.lineString(currentLayer.getLatLngs().map(p => [p.lng, p.lat]));
+  const km = turf.length(line, { units: 'kilometers' });
+  const meters = Math.round(km * 1000);
+
+  const minutes = Math.round((km / currentSpeed) * 60);
+
+  document.getElementById('info').innerHTML = `
+    <strong>Path:</strong> ${meters} m (${km.toFixed(2)} km)<br>
+    <strong>Time @ ${currentSpeed} km/h:</strong> ${minutes} minutes
+  `;
+}
+
+// Simple turn detection for voice guidance
+function analyzeTurns() {
+  if (!currentLayer || currentLayer.getLatLngs().length < 3) return;
+  turns = [];
+  const coords = currentLayer.getLatLngs().map(p => [p.lng, p.lat]);
+  const simplified = turf.simplify(turf.lineString(coords), { tolerance: 0.0003 });
+  const points = simplified.geometry.coordinates;
+
+  let cumDist = 0;
+  for (let i = 1; i < points.length - 1; i++) {
+    const b1 = turf.bearing(points[i-1], points[i]);
+    const b2 = turf.bearing(points[i], points[i+1]);
+    let diff = (b2 - b1 + 540) % 360 - 180;
+
+    if (Math.abs(diff) > 35) {
+      const segDist = turf.distance(points[i-1], points[i], {units: 'kilometers'}) * 1000;
+      cumDist += segDist;
+      const dir = diff > 0 ? 'right' : 'left';
+      turns.push({
+        dist: Math.round(cumDist),
+        text: `In about ${Math.round(cumDist)} meters, turn ${Math.abs(diff) > 90 ? 'sharply' : 'gently'} ${dir}`
+      });
+    }
+  }
+}
+
+// ==================== VOICE GUIDANCE (SIMULATED) ====================
+const playBtn = document.getElementById('playBtn');
+playBtn.addEventListener('click', () => {
+  if (!currentLayer || turns.length === 0) {
+    alert("Draw a path first!");
+    return;
+  }
+  if (!('speechSynthesis' in window)) {
+    alert("Voice not supported on this browser.");
+    return;
+  }
+
+  let distanceTraveled = 0;
+  const step = 40; // simulate moving ~40m every 800ms
+  const utterance = new SpeechSynthesisUtterance("Starting walk simulation.");
+  speechSynthesis.speak(utterance);
+
+  const interval = setInterval(() => {
+    distanceTraveled += step;
+
+    const nextTurn = turns.find(t => t.dist > distanceTraveled && t.dist < distanceTraveled + 80);
+    if (nextTurn) {
+      const u = new SpeechSynthesisUtterance(nextTurn.text);
+      u.rate = 1.05;
+      speechSynthesis.speak(u);
+    }
+
+    if (distanceTraveled > turf.length(turf.lineString(currentLayer.getLatLngs().map(p => [p.lng, p.lat])), {units: 'meters'})) {
+      clearInterval(interval);
+      speechSynthesis.speak(new SpeechSynthesisUtterance("You have reached the end of the path."));
+    }
+  }, 800);
+});
+
+// ==================== BUTTONS ====================
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (currentLayer) {
+    map.removeLayer(currentLayer);
+    currentLayer = null;
+    turns = [];
+    document.getElementById('info').innerHTML = 'Draw a path on the map';
+  }
+});
+
+document.getElementById('locateBtn').addEventListener('click', () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      map.flyTo([pos.coords.latitude, pos.coords.longitude], 16);
+    }, () => alert("Location access denied."));
+  }
+});
+</script>
+</body>
+</html>
