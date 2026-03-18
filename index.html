@@ -158,6 +158,9 @@ function analyzeTurns() {
 // ==================== GUIDANCE & BACKGROUND ====================
 
 async function toggleGuidance(forceOff = false) {
+
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
   if (guidanceEnabled || forceOff) {
     guidanceEnabled = false;
     playBtn.textContent = '▶️ Start Audio Guidance';
