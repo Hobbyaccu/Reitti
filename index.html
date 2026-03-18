@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="fi">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -11,243 +11,101 @@
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
 
   <style>
-    :root { --accent: #e00; }
-    body { margin:0; padding:0; font-family: system-ui, -apple-system, sans-serif; background:#111; color:#fff; overflow:hidden; }
+    body { margin:0; padding:0; font-family: system-ui, sans-serif; background:#111; color:#fff; }
     #map { position:absolute; top:0; bottom:0; left:0; right:0; }
-
-    /* Compact bottom controls – squashed for mobile */
     #controls {
       position: absolute;
-      bottom: 12px;
+      bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(20,20,20,0.92);
-      backdrop-filter: blur(16px);
-      padding: 8px 12px;
-      border-radius: 18px;
-      box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+      background: rgba(0,0,0,0.85);
+      padding: 12px 18px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
       z-index: 1000;
-      max-width: 94%;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      align-items: center;
+      text-align: center;
+      max-width: 92%;
     }
-    .btn-row {
-      display: flex;
-      gap: 6px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-    button {
-      font-size: 0.95em;
-      padding: 9px 12px;
+    button, input[type="range"] {
+      font-size: 1.1em;
+      padding: 12px 20px;
+      margin: 6px;
       border-radius: 12px;
       border: none;
-      background: var(--accent);
+      background: #e00;
       color: white;
-      font-weight: 600;
-      white-space: nowrap;
-      transition: all 0.2s;
     }
-    button:active { transform: scale(0.94); background: #c00; }
-    .small-btn { padding: 8px 10px; font-size: 0.9em; }
-
-    select, input[type="range"] {
-      font-size: 0.95em;
-      padding: 8px 10px;
-      border-radius: 10px;
-      background: #222;
-      color: #fff;
-      border: none;
-    }
-
-    /* Info box */
+    button:active { background: #c00; }
     #info {
       position: absolute;
-      top: 16px;
-      right: 16px;
+      top: 12px;
+      right: 12px;   /* ← MOVED TO TOP-RIGHT */
+      left: auto;
       background: rgba(0,0,0,0.85);
-      backdrop-filter: blur(12px);
-      padding: 12px 16px;
-      border-radius: 14px;
-      font-size: 1.0em;
+      padding: 14px;
+      border-radius: 12px;
+      font-size: 1.05em;
       z-index: 1000;
-      max-width: 240px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      max-width: 260px;
     }
-
-    /* Saved modal (unchanged) */
-    #savedModal {
-      display: none; position: fixed; inset: 0;
-      background: rgba(0,0,0,0.92); z-index: 2000;
-      align-items: center; justify-content: center;
-    }
-    #modalContent {
-      background: rgba(30,30,30,0.95); backdrop-filter: blur(16px);
-      width: 92%; max-width: 380px; max-height: 78vh; border-radius: 20px;
-      box-shadow: 0 10px 40px rgba(0,0,0,0.5); overflow: hidden;
-    }
-    #modalHeader { padding: 14px 18px; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; }
-    #modalList { max-height: 420px; overflow-y: auto; padding: 8px; }
-    .path-item { padding: 12px; margin: 6px; background: #222; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; }
-    .path-item button { padding: 7px 12px; font-size: 0.9em; }
+    .leaflet-control { z-index: 999 !important; }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
-
-<div id="info">Piirrä polku kartalle (freehand)</div>
+<div id="info">Draw a path on the map</div>
 
 <div id="controls">
-  <div class="btn-row">
-    <button id="clearBtn" class="small-btn">🗑️ Tyhjennä</button>
-    <button id="saveBtn" class="small-btn">💾 Tallenna</button>
-    <button id="savedBtn" class="small-btn">📂 Tallennetut</button>
-    <button id="exportBtn" class="small-btn">⬇️ Vie</button>
-    <button id="themeBtn" class="small-btn">🌙 Tumma</button>
-  </div>
-
-  <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center;">
-    <label><span id="voicePrefix"></span>
-      <select id="langSelect">
-        <option value="fi-FI" selected>Suomi</option>
-        <option value="en-US">English</option>
-      </select>
-    </label>
-    <label><span id="speedPrefix"></span> <span id="speedVal">4.5</span> km/h</label>
-    <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5" style="width:140px;">
-  </div>
-
-  <button id="playBtn" style="width:100%; padding:11px;">▶️ Käynnistä ääniohjaus</button>
+  <button id="clearBtn">Clear Path</button>
+  <button id="locateBtn">📍 Find Me</button>
+  <button id="playBtn">▶️ Start Voice Guidance</button><br>
+  <label>Walking speed: <span id="speedVal">4.5</span> km/h</label>
+  <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5">
 </div>
 
-<!-- Saved paths modal -->
-<div id="savedModal">
-  <div id="modalContent">
-    <div id="modalHeader">
-      <h3 id="modalTitle" style="margin:0;">Tallennetut polut</h3>
-      <button id="closeModal" style="background:none; color:#fff; font-size:1.8em; padding:0 12px;">×</button>
-    </div>
-    <div id="modalList"></div>
-  </div>
-</div>
-
-<!-- Scripts -->
+<!-- Leaflet -->
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<!-- Geoman -->
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.js"></script>
+<!-- Turf.js -->
 <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
 
 <script>
-// ==================== TRANSLATIONS ====================
-const translations = {
-  fi: {
-    info: "Piirrä polku kartalle (freehand)",
-    clear: "🗑️ Tyhjennä",
-    save: "💾 Tallenna",
-    saved: "📂 Tallennetut",
-    export: "⬇️ Vie",
-    themeDark: "🌙 Tumma",
-    themeLight: "☀️ Vaalea",
-    playStart: "▶️ Käynnistä ääniohjaus",
-    playStop: "🔇 Pysäytä",
-    speedLabel: "Kävelynopeus:",
-    voiceLabel: "Ääni:",
-    modalTitle: "Tallennetut polut",
-    load: "Lataa",
-    delete: "Poista",
-    noPaths: "Ei tallennettuja polkuja vielä",
-    savePrompt: "Polun nimi (tai tyhjä automaattiseksi):",
-    alertDrawFirst: "Piirrä ensin polku!",
-    alertLocation: "Salli sijainti ääniohjaukselle!",
-    savedMessage: "Polku tallennettu!"
-  },
-  en: {
-    info: "Draw a path on the map (freehand)",
-    clear: "🗑️ Clear",
-    save: "💾 Save",
-    saved: "📂 Saved",
-    export: "⬇️ Export",
-    themeDark: "🌙 Dark",
-    themeLight: "☀️ Light",
-    playStart: "▶️ Start Voice",
-    playStop: "🔇 Stop",
-    speedLabel: "Walking speed:",
-    voiceLabel: "Voice:",
-    modalTitle: "Saved paths",
-    load: "Load",
-    delete: "Delete",
-    noPaths: "No saved paths yet",
-    savePrompt: "Path name (or leave empty):",
-    alertDrawFirst: "Draw a path first!",
-    alertLocation: "Location required for voice guidance!",
-    savedMessage: "Path saved!"
-  }
-};
-
-let currentLang = 'fi-FI';
-
-// ==================== SETUP ====================
-const map = L.map('map', { zoomControl: false }).setView([60.17, 24.94], 13);
+// ==================== VARIABLES ====================
+const map = L.map('map', { zoomControl: false }).setView([51.5, -0.1], 13);
 
 let currentLayer = null;
 let turns = [];
 let userMarker = null;
+let positionWatchId = null;
 let guidanceEnabled = false;
 let announcedTurns = new Set();
 let currentSpeed = 4.5;
-let currentTileLayer = null;
-let savedPaths = JSON.parse(localStorage.getItem('walkPaths')) || [];
-let isDark = true;
 
-// Tile layers
-const darkLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO' });
-const lightLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap &copy; CARTO' });
+// ==================== MAP SETUP ====================
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap'
+}).addTo(map);
 
-currentTileLayer = darkLayer;
-currentTileLayer.addTo(map);
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-// ==================== FREEHAND DRAWING SETUP ====================
+// Geoman (touch-friendly)
 map.pm.addControls({
   position: 'topleft',
-  drawMarker: false, drawCircleMarker: false, drawRectangle: false,
-  drawPolygon: false, drawCircle: false, drawPolyline: false,
-  editMode: true, dragMode: true, removalMode: true
+  drawMarker: false,
+  drawCircleMarker: false,
+  drawRectangle: false,
+  drawPolygon: false,
+  drawCircle: false,
+  drawPolyline: true,
+  editMode: true,
+  dragMode: true,
+  removalMode: true,
+  cutPolygon: false
 });
 
-function enableFreehandDrawing() {
-  map.pm.enableDraw('Polyline', {
-    freehand: true,
-    pathOptions: { color: '#e00', weight: 7, lineCap: 'round' }
-  });
-}
-enableFreehandDrawing(); // start in freehand mode
-
-// ==================== UI UPDATE FUNCTION ====================
-function updateAllTexts() {
-  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
-
-  document.getElementById('info').textContent = t.info;
-  document.getElementById('clearBtn').innerHTML = t.clear;
-  document.getElementById('saveBtn').innerHTML = t.save;
-  document.getElementById('savedBtn').innerHTML = t.saved;
-  document.getElementById('exportBtn').innerHTML = t.export;
-  document.getElementById('themeBtn').textContent = isDark ? t.themeDark : t.themeLight;
-  
-  // Localized labels
-  document.getElementById('voicePrefix').textContent = t.voiceLabel + ' ';
-  document.getElementById('speedPrefix').textContent = t.speedLabel + ' ';
-
-  // Play button (dynamic)
-  const playBtn = document.getElementById('playBtn');
-  playBtn.textContent = guidanceEnabled ? t.playStop : t.playStart;
-
-  document.getElementById('modalTitle').textContent = t.modalTitle;
-}
-
-// ==================== SPEED & LANGUAGE ====================
+// ==================== SPEED SLIDER ====================
 const speedSlider = document.getElementById('speedSlider');
 const speedVal = document.getElementById('speedVal');
 speedSlider.addEventListener('input', () => {
@@ -256,77 +114,74 @@ speedSlider.addEventListener('input', () => {
   if (currentLayer) updateInfo();
 });
 
-const langSelect = document.getElementById('langSelect');
-langSelect.addEventListener('change', () => {
-  currentLang = langSelect.value;
-  updateAllTexts();
-  if (currentLayer) updateInfo();
-});
-
-// ==================== DRAWING & INFO ====================
+// ==================== DRAWING & MEASUREMENT ====================
 map.on('pm:create', e => {
   if (currentLayer) map.removeLayer(currentLayer);
   currentLayer = e.layer;
   updateInfo();
   analyzeTurns();
-  map.pm.disableDraw(); // finish drawing after first path is created
 });
 
-map.on('pm:edit', () => { 
-  if (currentLayer) { 
-    updateInfo(); 
-    analyzeTurns(); 
-  } 
+map.on('pm:edit', () => {
+  if (currentLayer) {
+    updateInfo();
+    analyzeTurns();
+  }
 });
 
 function updateInfo() {
   if (!currentLayer) return;
   const line = turf.lineString(currentLayer.getLatLngs().map(p => [p.lng, p.lat]));
   const km = turf.length(line, { units: 'kilometers' });
+  const meters = Math.round(km * 1000);
   const minutes = Math.round((km / currentSpeed) * 60);
+
   document.getElementById('info').innerHTML = `
-    <strong>${currentLang==='fi-FI'?'Polku':'Path'}:</strong> ${Math.round(km*1000)} m (${km.toFixed(2)} km)<br>
-    <strong>${currentLang==='fi-FI'?'Aika':'Time'} @ ${currentSpeed} km/h:</strong> ${minutes} min
+    <strong>Path:</strong> ${meters} m (${km.toFixed(2)} km)<br>
+    <strong>Time @ ${currentSpeed} km/h:</strong> ${minutes} minutes
   `;
 }
 
-// Turn logic
+// ==================== TURN DETECTION (for voice) ====================
 function analyzeTurns() {
   if (!currentLayer || currentLayer.getLatLngs().length < 3) return;
-  turns = []; announcedTurns = new Set();
-  const coords = currentLayer.getLatLngs().map(p => [p.lng, p.lat]);
-  const simplified = turf.simplify(turf.lineString(coords), { tolerance: 0.0003 });
+  turns = [];
+  announcedTurns = new Set();
+
+  const coords = currentLayer.getLatLngs();
+  const geoCoords = coords.map(p => [p.lng, p.lat]);
+  const simplified = turf.simplify(turf.lineString(geoCoords), { tolerance: 0.0003 });
   const points = simplified.geometry.coordinates;
+
   for (let i = 1; i < points.length - 1; i++) {
     const b1 = turf.bearing(points[i-1], points[i]);
     const b2 = turf.bearing(points[i], points[i+1]);
     let diff = (b2 - b1 + 540) % 360 - 180;
+
     if (Math.abs(diff) > 35) {
+      const dir = diff > 0 ? 'right' : 'left';
+      const sharpness = Math.abs(diff) > 90 ? 'sharply' : 'gently';
       turns.push({
-        lat: points[i][1], lng: points[i][0],
-        sharpness: Math.abs(diff) > 90 ? 'sharply' : 'gently',
-        dir: diff > 0 ? 'right' : 'left'
+        lat: points[i][1],
+        lng: points[i][0],
+        text: `In about 50 meters, turn ${sharpness} ${dir}`
       });
     }
   }
 }
 
-function getTurnText(turn) {
-  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
-  if (currentLang === 'fi-FI') {
-    const sharp = turn.sharpness === 'sharply' ? 'jyrkästi' : 'loivasti';
-    const direction = turn.dir === 'left' ? 'vasemmalle' : 'oikealle';
-    return `Noin 50 metrin päässä käänny ${sharp} ${direction}`;
-  }
-  return `In about 50 meters, turn ${turn.sharpness} ${turn.dir}`;
-}
-
-// ==================== GPS & VOICE ====================
+// ==================== REAL-TIME GPS & VOICE CHECK ====================
 function updateUserPosition(pos) {
   const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-  if (userMarker) userMarker.setLatLng(latlng);
-  else userMarker = L.marker(latlng).addTo(map);
-  if (guidanceEnabled && turns.length > 0) checkForTurns(pos.coords.latitude, pos.coords.longitude);
+  if (userMarker) {
+    userMarker.setLatLng(latlng);
+  } else {
+    userMarker = L.marker(latlng, { title: "You are here" }).addTo(map);
+  }
+
+  if (guidanceEnabled && turns.length > 0) {
+    checkForTurns(pos.coords.latitude, pos.coords.longitude);
+  }
 }
 
 function checkForTurns(lat, lng) {
@@ -334,135 +189,84 @@ function checkForTurns(lat, lng) {
   for (let i = 0; i < turns.length; i++) {
     if (announcedTurns.has(i)) continue;
     const turn = turns[i];
-    const dist = turf.distance(userPoint, turf.point([turn.lng, turn.lat]), { units: 'kilometers' }) * 1000;
-    if (dist <= 60) {
-      const u = new SpeechSynthesisUtterance(getTurnText(turn));
-      u.lang = currentLang; u.rate = 1.05;
+    const turnPoint = turf.point([turn.lng, turn.lat]);
+    const distMeters = turf.distance(userPoint, turnPoint, { units: 'kilometers' }) * 1000;
+
+    if (distMeters <= 60) {
+      const u = new SpeechSynthesisUtterance(turn.text);
+      u.rate = 1.05;
       speechSynthesis.speak(u);
       announcedTurns.add(i);
     }
   }
 }
 
+// ==================== VOICE GUIDANCE BUTTON (real GPS) ====================
 const playBtn = document.getElementById('playBtn');
 playBtn.addEventListener('click', () => {
-  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
-  if (!currentLayer) { alert(t.alertDrawFirst); return; }
-  if (!userMarker) { alert(t.alertLocation); return; }
-  guidanceEnabled = !guidanceEnabled;
-  playBtn.textContent = guidanceEnabled ? t.playStop : t.playStart;
-  if (guidanceEnabled) speechSynthesis.speak(new SpeechSynthesisUtterance(currentLang==='fi-FI'?"Ääniohjaus käynnistetty":"Voice guidance started"));
-  else speechSynthesis.cancel();
-});
-
-// ==================== THEME ====================
-const themeBtn = document.getElementById('themeBtn');
-themeBtn.addEventListener('click', () => {
-  map.removeLayer(currentTileLayer);
-  isDark = !isDark;
-  currentTileLayer = isDark ? darkLayer : lightLayer;
-  currentTileLayer.addTo(map);
-  themeBtn.textContent = isDark 
-    ? translations[currentLang==='fi-FI'?'fi':'en'].themeDark 
-    : translations[currentLang==='fi-FI'?'fi':'en'].themeLight;
-});
-
-// ==================== SAVING & MODAL ====================
-function saveCurrentPath() {
-  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
-  if (!currentLayer) { alert(t.alertDrawFirst); return; }
-  const name = prompt(t.savePrompt) || `Polku ${new Date().toLocaleDateString(currentLang==='fi-FI'?'fi-FI':'en-US')}`;
-  const geojson = currentLayer.toGeoJSON();
-  savedPaths.unshift({ id: Date.now(), name, geojson, date: Date.now() });
-  localStorage.setItem('walkPaths', JSON.stringify(savedPaths));
-  alert(t.savedMessage);
-}
-
-document.getElementById('saveBtn').addEventListener('click', saveCurrentPath);
-
-document.getElementById('exportBtn').addEventListener('click', () => {
-  if (!currentLayer) return;
-  const geo = currentLayer.toGeoJSON();
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(geo));
-  const a = document.createElement("a");
-  a.href = dataStr;
-  a.download = "minun-polku.geojson";
-  a.click();
-});
-
-// Modal
-const savedModal = document.getElementById('savedModal');
-const modalList = document.getElementById('modalList');
-
-function renderSavedPaths() {
-  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
-  modalList.innerHTML = '';
-  if (savedPaths.length === 0) {
-    modalList.innerHTML = `<p style="text-align:center;padding:20px;color:#888;">${t.noPaths}</p>`;
+  if (!currentLayer) {
+    alert("Draw a path first!");
     return;
   }
-  savedPaths.forEach((p, index) => {
-    const div = document.createElement('div');
-    div.className = 'path-item';
-    div.innerHTML = `
-      <div><strong>${p.name}</strong><br><small>${new Date(p.date).toLocaleDateString(currentLang==='fi-FI'?'fi-FI':'en-US')}</small></div>
-      <div>
-        <button class="loadBtn" data-index="${index}">${t.load}</button>
-        <button class="deleteBtn" data-index="${index}" style="background:#555;">${t.delete}</button>
-      </div>
-    `;
-    modalList.appendChild(div);
-  });
+  if (!userMarker) {
+    alert("Location access is required for voice guidance.\n\nIt was requested when you opened the page.");
+    return;
+  }
 
-  modalList.querySelectorAll('.loadBtn').forEach(btn => btn.addEventListener('click', () => {
-    loadSavedPath(parseInt(btn.dataset.index));
-    savedModal.style.display = 'none';
-  }));
-  modalList.querySelectorAll('.deleteBtn').forEach(btn => btn.addEventListener('click', () => {
-    if (confirm(currentLang==='fi-FI'?"Poistetaanko?":"Delete?")) {
-      savedPaths.splice(parseInt(btn.dataset.index), 1);
-      localStorage.setItem('walkPaths', JSON.stringify(savedPaths));
-      renderSavedPaths();
-    }
-  }));
-}
+  if (guidanceEnabled) {
+    guidanceEnabled = false;
+    playBtn.textContent = '▶️ Start Voice Guidance';
+    speechSynthesis.cancel();
+    return;
+  }
 
-function loadSavedPath(index) {
-  if (currentLayer) map.removeLayer(currentLayer);
-  const saved = savedPaths[index];
-  const coords = saved.geojson.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
-  currentLayer = L.polyline(coords, { color: '#e00', weight: 7 }).addTo(map);
-  updateInfo();
-  analyzeTurns();
-}
-
-document.getElementById('savedBtn').addEventListener('click', () => {
-  renderSavedPaths();
-  savedModal.style.display = 'flex';
+  guidanceEnabled = true;
+  playBtn.textContent = '🔇 Stop Voice Guidance';
+  speechSynthesis.speak(new SpeechSynthesisUtterance("Voice guidance started. I'll tell you at each turn."));
+  checkForTurns(userMarker.getLatLng().lat, userMarker.getLatLng().lng);
 });
-document.getElementById('closeModal').addEventListener('click', () => savedModal.style.display = 'none');
 
-// Clear
+// ==================== OTHER BUTTONS ====================
 document.getElementById('clearBtn').addEventListener('click', () => {
-  if (currentLayer) map.removeLayer(currentLayer);
-  currentLayer = null; turns = []; announcedTurns = new Set(); guidanceEnabled = false;
-  const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
-  playBtn.textContent = t.playStart;
-  document.getElementById('info').textContent = t.info;
-  enableFreehandDrawing(); // re-enable drawing for new path
+  if (currentLayer) {
+    map.removeLayer(currentLayer);
+    currentLayer = null;
+    turns = [];
+    announcedTurns = new Set();
+    guidanceEnabled = false;
+    playBtn.textContent = '▶️ Start Voice Guidance';
+    document.getElementById('info').innerHTML = 'Draw a path on the map';
+  }
 });
 
-// ==================== AUTO LOCATION ====================
-if (navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(pos => {
-    map.flyTo([pos.coords.latitude, pos.coords.longitude], 15);
-    userMarker = L.marker([pos.coords.latitude, pos.coords.longitude]).addTo(map);
-    navigator.geolocation.watchPosition(updateUserPosition, () => {}, { enableHighAccuracy: true });
-  });
-}
+document.getElementById('locateBtn').addEventListener('click', () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(pos => {
+      map.flyTo([pos.coords.latitude, pos.coords.longitude], 16);
+    });
+  }
+});
 
-// ==================== INITIALIZE ====================
-updateAllTexts();
+// ==================== AUTO REQUEST LOCATION ON PAGE LOAD ====================
+if (navigator.geolocation) {
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      map.flyTo(latlng, 15);
+      userMarker = L.marker(latlng).addTo(map);
+
+      // Start continuous tracking
+      positionWatchId = navigator.geolocation.watchPosition(
+        updateUserPosition,
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
+      );
+    },
+    () => {
+      // User denied location – drawing still works, voice will just show alert
+    }
+  );
+}
 </script>
 </body>
 </html>
