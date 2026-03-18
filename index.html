@@ -110,13 +110,13 @@
   </div>
 
   <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; justify-content:center;">
-    <label>Ääni: 
+    <label><span id="voicePrefix"></span>
       <select id="langSelect">
         <option value="fi-FI" selected>Suomi</option>
         <option value="en-US">English</option>
       </select>
     </label>
-    <label>Kävelynopeus: <span id="speedVal">4.5</span> km/h</label>
+    <label><span id="speedPrefix"></span> <span id="speedVal">4.5</span> km/h</label>
     <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5" style="width:140px;">
   </div>
 
@@ -209,17 +209,21 @@ currentTileLayer = darkLayer;
 currentTileLayer.addTo(map);
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-// Freehand only + edit tools
+// ==================== FREEHAND DRAWING SETUP ====================
 map.pm.addControls({
   position: 'topleft',
   drawMarker: false, drawCircleMarker: false, drawRectangle: false,
   drawPolygon: false, drawCircle: false, drawPolyline: false,
   editMode: true, dragMode: true, removalMode: true
 });
-map.pm.enableDraw('Freehand', {
-  freehandOptions: { fill: false },
-  pathOptions: { color: '#e00', weight: 7, lineCap: 'round' }
-});
+
+function enableFreehandDrawing() {
+  map.pm.enableDraw('Polyline', {
+    freehand: true,
+    pathOptions: { color: '#e00', weight: 7, lineCap: 'round' }
+  });
+}
+enableFreehandDrawing(); // start in freehand mode
 
 // ==================== UI UPDATE FUNCTION ====================
 function updateAllTexts() {
@@ -232,6 +236,10 @@ function updateAllTexts() {
   document.getElementById('exportBtn').innerHTML = t.export;
   document.getElementById('themeBtn').textContent = isDark ? t.themeDark : t.themeLight;
   
+  // Localized labels
+  document.getElementById('voicePrefix').textContent = t.voiceLabel + ' ';
+  document.getElementById('speedPrefix').textContent = t.speedLabel + ' ';
+
   // Play button (dynamic)
   const playBtn = document.getElementById('playBtn');
   playBtn.textContent = guidanceEnabled ? t.playStop : t.playStart;
@@ -252,6 +260,7 @@ const langSelect = document.getElementById('langSelect');
 langSelect.addEventListener('change', () => {
   currentLang = langSelect.value;
   updateAllTexts();
+  if (currentLayer) updateInfo();
 });
 
 // ==================== DRAWING & INFO ====================
@@ -260,8 +269,15 @@ map.on('pm:create', e => {
   currentLayer = e.layer;
   updateInfo();
   analyzeTurns();
+  map.pm.disableDraw(); // finish drawing after first path is created
 });
-map.on('pm:edit', () => { if (currentLayer) { updateInfo(); analyzeTurns(); } });
+
+map.on('pm:edit', () => { 
+  if (currentLayer) { 
+    updateInfo(); 
+    analyzeTurns(); 
+  } 
+});
 
 function updateInfo() {
   if (!currentLayer) return;
@@ -274,7 +290,7 @@ function updateInfo() {
   `;
 }
 
-// Turn logic + getTurnText (same as before)
+// Turn logic
 function analyzeTurns() {
   if (!currentLayer || currentLayer.getLatLngs().length < 3) return;
   turns = []; announcedTurns = new Set();
@@ -305,7 +321,7 @@ function getTurnText(turn) {
   return `In about 50 meters, turn ${turn.sharpness} ${turn.dir}`;
 }
 
-// ==================== GPS & VOICE (unchanged) ====================
+// ==================== GPS & VOICE ====================
 function updateUserPosition(pos) {
   const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
   if (userMarker) userMarker.setLatLng(latlng);
@@ -351,7 +367,7 @@ themeBtn.addEventListener('click', () => {
     : translations[currentLang==='fi-FI'?'fi':'en'].themeLight;
 });
 
-// ==================== SAVING & MODAL (localized) ====================
+// ==================== SAVING & MODAL ====================
 function saveCurrentPath() {
   const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
   if (!currentLayer) { alert(t.alertDrawFirst); return; }
@@ -433,6 +449,7 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   const t = translations[currentLang === 'fi-FI' ? 'fi' : 'en'];
   playBtn.textContent = t.playStart;
   document.getElementById('info').textContent = t.info;
+  enableFreehandDrawing(); // re-enable drawing for new path
 });
 
 // ==================== AUTO LOCATION ====================
