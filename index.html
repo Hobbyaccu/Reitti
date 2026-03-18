@@ -5,9 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Draw My Walk</title>
 
-  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <!-- Geoman -->
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
 
   <style>
@@ -34,12 +32,14 @@
       border: none;
       background: #e00;
       color: white;
+      cursor: pointer;
     }
     button:active { background: #c00; }
     #info {
+      display: none; /* Hidden by default until a path is drawn */
       position: absolute;
       top: 12px;
-      right: 12px;   /* ← MOVED TO TOP-RIGHT */
+      right: 12px;
       left: auto;
       background: rgba(0,0,0,0.85);
       padding: 14px;
@@ -54,7 +54,7 @@
 <body>
 
 <div id="map"></div>
-<div id="info">Draw a path on the map</div>
+<div id="info"></div>
 
 <div id="controls">
   <button id="clearBtn">Clear Path</button>
@@ -64,11 +64,12 @@
   <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5">
 </div>
 
-<!-- Leaflet -->
+<audio id="keepAliveAudio" loop playsinline>
+  <source src="data:audio/mp3;base64,//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" type="audio/mpeg">
+</audio>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<!-- Geoman -->
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.js"></script>
-<!-- Turf.js -->
 <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
 
 <script>
@@ -82,6 +83,7 @@ let positionWatchId = null;
 let guidanceEnabled = false;
 let announcedTurns = new Set();
 let currentSpeed = 4.5;
+let wakeLock = null;
 
 // ==================== MAP SETUP ====================
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -90,7 +92,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-// Geoman (touch-friendly)
+// Geoman - Simplified Controls
 map.pm.addControls({
   position: 'topleft',
   drawMarker: false,
@@ -98,12 +100,17 @@ map.pm.addControls({
   drawRectangle: false,
   drawPolygon: false,
   drawCircle: false,
-  drawPolyline: true,
-  editMode: true,
-  dragMode: true,
-  removalMode: true,
-  cutPolygon: false
+  drawText: false,
+  drawPolyline: true,     // Keep line drawing
+  editMode: true,         // Keep editing
+  dragMode: false,
+  removalMode: true,      // Keep deleting
+  cutPolygon: false,
+  rotateMode: false
 });
+
+// Enable snapping so closing loops is easier
+map.pm.setGlobalOptions({ snappable: true, snapDistance: 20 });
 
 // ==================== SPEED SLIDER ====================
 const speedSlider = document.getElementById('speedSlider');
@@ -115,28 +122,53 @@ speedSlider.addEventListener('input', () => {
 });
 
 // ==================== DRAWING & MEASUREMENT ====================
+
+// Fix: Manually close the loop if the start and end points are very close
+function ensureClosedLoop(layer) {
+  const latlngs = layer.getLatLngs();
+  if (latlngs.length > 2) {
+    const first = latlngs[0];
+    const last = latlngs[latlngs.length - 1];
+    const dist = first.distanceTo(last);
+    
+    // If they finished drawing within 30 meters of the start point, close it
+    if (dist > 0 && dist < 30) {
+      latlngs.push(first);
+      layer.setLatLngs(latlngs);
+    }
+  }
+}
+
 map.on('pm:create', e => {
   if (currentLayer) map.removeLayer(currentLayer);
   currentLayer = e.layer;
+  ensureClosedLoop(currentLayer);
   updateInfo();
   analyzeTurns();
 });
 
 map.on('pm:edit', () => {
   if (currentLayer) {
+    ensureClosedLoop(currentLayer);
     updateInfo();
     analyzeTurns();
   }
 });
 
 function updateInfo() {
-  if (!currentLayer) return;
+  const infoDiv = document.getElementById('info');
+  if (!currentLayer) {
+    infoDiv.style.display = 'none';
+    return;
+  }
+  
+  infoDiv.style.display = 'block';
   const line = turf.lineString(currentLayer.getLatLngs().map(p => [p.lng, p.lat]));
   const km = turf.length(line, { units: 'kilometers' });
   const meters = Math.round(km * 1000);
   const minutes = Math.round((km / currentSpeed) * 60);
 
-  document.getElementById('info').innerHTML = `
+  infoDiv.innerHTML = `
     <strong>Path:</strong> ${meters} m (${km.toFixed(2)} km)<br>
     <strong>Time @ ${currentSpeed} km/h:</strong> ${minutes} minutes
   `;
@@ -167,6 +199,23 @@ function analyzeTurns() {
         text: `In about 50 meters, turn ${sharpness} ${dir}`
       });
     }
+  }
+}
+
+// ==================== BACKGROUND PROCESS MANAGEMENT ====================
+async function requestWakeLock() {
+  if ('wakeLock' in navigator) {
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+    } catch (err) {
+      console.warn('Wake Lock failed:', err);
+    }
+  }
+}
+
+function releaseWakeLock() {
+  if (wakeLock !== null) {
+    wakeLock.release().then(() => { wakeLock = null; });
   }
 }
 
@@ -201,8 +250,10 @@ function checkForTurns(lat, lng) {
   }
 }
 
-// ==================== VOICE GUIDANCE BUTTON (real GPS) ====================
+// ==================== VOICE GUIDANCE BUTTON ====================
 const playBtn = document.getElementById('playBtn');
+const keepAliveAudio = document.getElementById('keepAliveAudio');
+
 playBtn.addEventListener('click', () => {
   if (!currentLayer) {
     alert("Draw a path first!");
@@ -214,15 +265,28 @@ playBtn.addEventListener('click', () => {
   }
 
   if (guidanceEnabled) {
+    // STOP GUIDANCE
     guidanceEnabled = false;
     playBtn.textContent = '▶️ Start Voice Guidance';
     speechSynthesis.cancel();
+    keepAliveAudio.pause();
+    releaseWakeLock();
     return;
   }
 
+  // START GUIDANCE
   guidanceEnabled = true;
   playBtn.textContent = '🔇 Stop Voice Guidance';
-  speechSynthesis.speak(new SpeechSynthesisUtterance("Voice guidance started. I'll tell you at each turn."));
+  
+  // 1. Initialize Speech engine
+  speechSynthesis.speak(new SpeechSynthesisUtterance("Voice guidance started."));
+  
+  // 2. Play silent audio to keep JS loop alive in background
+  keepAliveAudio.play().catch(e => console.warn("Audio keep-alive blocked by browser", e));
+  
+  // 3. Keep screen on (for supported browsers)
+  requestWakeLock();
+
   checkForTurns(userMarker.getLatLng().lat, userMarker.getLatLng().lng);
 });
 
@@ -233,9 +297,16 @@ document.getElementById('clearBtn').addEventListener('click', () => {
     currentLayer = null;
     turns = [];
     announcedTurns = new Set();
-    guidanceEnabled = false;
-    playBtn.textContent = '▶️ Start Voice Guidance';
-    document.getElementById('info').innerHTML = 'Draw a path on the map';
+    
+    // Stop guidance if running
+    if (guidanceEnabled) {
+      guidanceEnabled = false;
+      playBtn.textContent = '▶️ Start Voice Guidance';
+      keepAliveAudio.pause();
+      releaseWakeLock();
+    }
+    
+    updateInfo(); // This will hide the info box
   }
 });
 
