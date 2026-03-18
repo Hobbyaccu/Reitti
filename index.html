@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Draw My Walk - Fixed</title>
+  <title>Draw My Walk - MP3 Edition</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
@@ -40,7 +40,6 @@
       position: absolute;
       top: 12px;
       right: 12px;
-      left: auto;
       background: rgba(0,0,0,0.85);
       padding: 14px;
       border-radius: 12px;
@@ -59,40 +58,37 @@
 <div id="controls">
   <button id="clearBtn">Clear Path</button>
   <button id="locateBtn">📍 Find Me</button>
-  <button id="playBtn">▶️ Start Voice Guidance</button><br>
+  <button id="playBtn">▶️ Start Audio Guidance</button><br>
   <label>Walking speed: <span id="speedVal">4.5</span> km/h</label>
   <input type="range" id="speedSlider" min="2" max="7" step="0.1" value="4.5">
 </div>
 
-<audio id="keepAliveAudio" loop playsinline>
-  <source src="data:audio/mp3;base64,//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//NExAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" type="audio/mpeg">
-</audio>
+<audio id="keepAliveAudio" loop playsinline src="data:audio/wav;base64,UklGRigAAABXQVZFWm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA="></audio>
+<audio id="audioLeft" playsinline src="Left.mp3"></audio>
+<audio id="audioRight" playsinline src="Right.mp3"></audio>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.js"></script>
 <script src="https://unpkg.com/@turf/turf@7/turf.min.js"></script>
 
 <script>
-// ==================== VARIABLES ====================
+// ==================== STATE ====================
 const map = L.map('map', { zoomControl: false }).setView([51.5, -0.1], 13);
 let currentLayer = null;
 let turns = [];
 let userMarker = null;
-let positionWatchId = null;
 let guidanceEnabled = false;
 let announcedTurns = new Set();
 let currentSpeed = 4.5;
 let wakeLock = null;
-let heartbeatInterval = null;
 
 const playBtn = document.getElementById('playBtn');
+const audioLeft = document.getElementById('audioLeft');
+const audioRight = document.getElementById('audioRight');
 const keepAliveAudio = document.getElementById('keepAliveAudio');
 
-// ==================== MAP SETUP ====================
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap'
-}).addTo(map);
-
+// ==================== MAP & GEOMAN ====================
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 L.control.zoom({ position: 'topright' }).addTo(map);
 
 map.pm.addControls({
@@ -101,41 +97,26 @@ map.pm.addControls({
   drawPolyline: true,
   editMode: true,
   removalMode: true,
-  dragMode: false,
-  drawPolygon: false,
-  drawCircle: false,
-  drawRectangle: false
+  dragMode: false
 });
 
 map.pm.setGlobalOptions({ snappable: true, snapDistance: 20 });
 
-// ==================== UTILS & CLEANUP ====================
-function clearExistingPath() {
-  if (currentLayer) {
-    map.removeLayer(currentLayer);
-    currentLayer = null;
-  }
-  
-  // CRITICAL: Disable Geoman drawing mode to prevent "broken" state
+// ==================== CORE FUNCTIONS ====================
+
+function clearPath() {
+  if (currentLayer) map.removeLayer(currentLayer);
+  currentLayer = null;
   map.pm.disableDraw();
-  
   turns = [];
   announcedTurns = new Set();
-  
-  // Stop guidance if it's active
-  if (guidanceEnabled) {
-    toggleGuidance(false);
-  }
-  
+  if (guidanceEnabled) toggleGuidance(true);
   updateInfo();
 }
 
 function updateInfo() {
   const infoDiv = document.getElementById('info');
-  if (!currentLayer) {
-    infoDiv.style.display = 'none';
-    return;
-  }
+  if (!currentLayer) { infoDiv.style.display = 'none'; return; }
   
   infoDiv.style.display = 'block';
   const latlngs = currentLayer.getLatLngs();
@@ -143,27 +124,10 @@ function updateInfo() {
 
   const line = turf.lineString(latlngs.map(p => [p.lng, p.lat]));
   const km = turf.length(line, { units: 'kilometers' });
-  const meters = Math.round(km * 1000);
   const minutes = Math.round((km / currentSpeed) * 60);
 
-  infoDiv.innerHTML = `
-    <strong>Path:</strong> ${meters} m (${km.toFixed(2)} km)<br>
-    <strong>Est. Time:</strong> ${minutes} mins
-  `;
+  infoDiv.innerHTML = `<strong>Dist:</strong> ${Math.round(km*1000)}m<br><strong>Time:</strong> ${minutes} mins`;
 }
-
-// ==================== DRAWING LOGIC ====================
-map.on('pm:create', e => {
-  if (currentLayer && currentLayer !== e.layer) map.removeLayer(currentLayer);
-  currentLayer = e.layer;
-  analyzeTurns();
-  updateInfo();
-});
-
-map.on('pm:edit', () => {
-  analyzeTurns();
-  updateInfo();
-});
 
 function analyzeTurns() {
   if (!currentLayer) return;
@@ -172,96 +136,73 @@ function analyzeTurns() {
 
   turns = [];
   announcedTurns = new Set();
+  const coords = latlngs.map(p => [p.lng, p.lat]);
+  const line = turf.simplify(turf.lineString(coords), { tolerance: 0.0001, highQuality: true });
+  const simplified = line.geometry.coordinates;
 
-  const points = latlngs.map(p => [p.lng, p.lat]);
-  const line = turf.lineString(points);
-  
-  // Simplify helps with the "jagged" drawing feel
-  const simplified = turf.simplify(line, { tolerance: 0.0001, highQuality: true });
-  const coords = simplified.geometry.coordinates;
-
-  for (let i = 1; i < coords.length - 1; i++) {
-    const bearing1 = turf.bearing(coords[i-1], coords[i]);
-    const bearing2 = turf.bearing(coords[i], coords[i+1]);
-    let diff = (bearing2 - bearing1 + 540) % 360 - 180;
+  for (let i = 1; i < simplified.length - 1; i++) {
+    const b1 = turf.bearing(simplified[i-1], simplified[i]);
+    const b2 = turf.bearing(simplified[i], simplified[i+1]);
+    let diff = (b2 - b1 + 540) % 360 - 180;
 
     if (Math.abs(diff) > 25) {
-      const dir = diff > 0 ? 'right' : 'left';
-      const intensity = Math.abs(diff) > 70 ? 'sharp' : 'slight';
       turns.push({
-        lat: coords[i][1],
-        lng: coords[i][0],
-        text: `In 50 meters, ${intensity} turn ${dir}`
+        lat: simplified[i][1],
+        lng: simplified[i][0],
+        type: diff > 0 ? 'right' : 'left'
       });
     }
   }
 }
 
-// ==================== BACKGROUND & VOICE ====================
-async function requestWakeLock() {
-  if ('wakeLock' in navigator) {
-    try { wakeLock = await navigator.wakeLock.request('screen'); } 
-    catch (err) { console.warn('Wake Lock error:', err); }
-  }
-}
-
-function startHeartbeat() {
-  if (heartbeatInterval) clearInterval(heartbeatInterval);
-  heartbeatInterval = setInterval(() => {
-    if (guidanceEnabled) {
-      keepAliveAudio.volume = keepAliveAudio.volume === 1 ? 0.99 : 1;
-    }
-  }, 10000);
-}
+// ==================== GUIDANCE & BACKGROUND ====================
 
 async function toggleGuidance(forceOff = false) {
   if (guidanceEnabled || forceOff) {
     guidanceEnabled = false;
-    playBtn.textContent = '▶️ Start Voice Guidance';
+    playBtn.textContent = '▶️ Start Audio Guidance';
     keepAliveAudio.pause();
-    clearInterval(heartbeatInterval);
-    if (wakeLock) {
-      await wakeLock.release();
-      wakeLock = null;
-    }
+    if (wakeLock) { await wakeLock.release(); wakeLock = null; }
   } else {
     if (!currentLayer) return alert("Draw a path first!");
-    if (!userMarker) return alert("Waiting for GPS...");
+    
+    // Unlock Audio for Mobile
+    audioLeft.play(); audioLeft.pause(); 
+    audioRight.play(); audioRight.pause();
+    keepAliveAudio.play();
 
     guidanceEnabled = true;
-    playBtn.textContent = '🔇 Stop Voice Guidance';
+    playBtn.textContent = '🔇 Stop Audio Guidance';
     
-    await requestWakeLock();
-    keepAliveAudio.play();
-    startHeartbeat();
-    
-    const msg = new SpeechSynthesisUtterance("Guidance started. Keep screen on.");
-    window.speechSynthesis.speak(msg);
+    if ('wakeLock' in navigator) {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+    }
   }
 }
 
 function checkForTurns(lat, lng) {
-  const userPoint = turf.point([lng, lat]);
+  const userP = turf.point([lng, lat]);
   turns.forEach((turn, i) => {
     if (announcedTurns.has(i)) return;
-    const turnPoint = turf.point([turn.lng, turn.lat]);
-    const distMeters = turf.distance(userPoint, turnPoint, { units: 'kilometers' }) * 1000;
+    const turnP = turf.point([turn.lng, turn.lat]);
+    const dist = turf.distance(userP, turnP, { units: 'kilometers' }) * 1000;
 
-    if (distMeters <= 60) {
-      const u = new SpeechSynthesisUtterance(turn.text);
-      window.speechSynthesis.speak(u);
+    if (dist <= 40) { // Trigger 40 meters before the point
+      if (turn.type === 'left') audioLeft.play();
+      else audioRight.play();
       announcedTurns.add(i);
     }
   });
 }
 
-// ==================== EVENTS ====================
-playBtn.addEventListener('click', () => toggleGuidance());
+// ==================== LISTENERS ====================
 
-document.getElementById('clearBtn').addEventListener('click', clearExistingPath);
+playBtn.addEventListener('click', async () => await toggleGuidance());
 
-speedSlider.addEventListener('input', () => {
-  currentSpeed = parseFloat(speedSlider.value);
+document.getElementById('clearBtn').addEventListener('click', clearPath);
+
+document.getElementById('speedSlider').addEventListener('input', (e) => {
+  currentSpeed = parseFloat(e.target.value);
   document.getElementById('speedVal').textContent = currentSpeed.toFixed(1);
   updateInfo();
 });
@@ -274,11 +215,20 @@ document.getElementById('locateBtn').addEventListener('click', () => {
   }
 });
 
-// GPS Initialization
+map.on('pm:create', e => {
+  if (currentLayer && currentLayer !== e.layer) map.removeLayer(currentLayer);
+  currentLayer = e.layer;
+  analyzeTurns();
+  updateInfo();
+});
+
+map.on('pm:edit', () => { analyzeTurns(); updateInfo(); });
+
+// Start GPS
 if (navigator.geolocation) {
   navigator.geolocation.watchPosition(
     (pos) => {
-      const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
+      const latlng = [pos.coords.latitude, pos.coords.longitude];
       if (!userMarker) {
         userMarker = L.marker(latlng).addTo(map);
         map.flyTo(latlng, 15);
@@ -287,7 +237,7 @@ if (navigator.geolocation) {
       }
       if (guidanceEnabled) checkForTurns(pos.coords.latitude, pos.coords.longitude);
     },
-    (err) => console.warn("GPS Error", err),
+    null,
     { enableHighAccuracy: true }
   );
 }
