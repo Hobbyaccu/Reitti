@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>Draw My Walk</title>
+  <title>Draw My Walk - Fixed</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css" />
@@ -36,7 +36,7 @@
     }
     button:active { background: #c00; }
     #info {
-      display: none; /* Hidden by default until a path is drawn */
+      display: none; 
       position: absolute;
       top: 12px;
       right: 12px;
@@ -75,7 +75,6 @@
 <script>
 // ==================== VARIABLES ====================
 const map = L.map('map', { zoomControl: false }).setView([51.5, -0.1], 13);
-
 let currentLayer = null;
 let turns = [];
 let userMarker = null;
@@ -84,6 +83,10 @@ let guidanceEnabled = false;
 let announcedTurns = new Set();
 let currentSpeed = 4.5;
 let wakeLock = null;
+let heartbeatInterval = null;
+
+const playBtn = document.getElementById('playBtn');
+const keepAliveAudio = document.getElementById('keepAliveAudio');
 
 // ==================== MAP SETUP ====================
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -92,68 +95,40 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 L.control.zoom({ position: 'topright' }).addTo(map);
 
-// Geoman - Simplified Controls
 map.pm.addControls({
   position: 'topleft',
   drawMarker: false,
-  drawCircleMarker: false,
-  drawRectangle: false,
+  drawPolyline: true,
+  editMode: true,
+  removalMode: true,
+  dragMode: false,
   drawPolygon: false,
   drawCircle: false,
-  drawText: false,
-  drawPolyline: true,     // Keep line drawing
-  editMode: true,         // Keep editing
-  dragMode: false,
-  removalMode: true,      // Keep deleting
-  cutPolygon: false,
-  rotateMode: false
+  drawRectangle: false
 });
 
-// Enable snapping so closing loops is easier
 map.pm.setGlobalOptions({ snappable: true, snapDistance: 20 });
 
-// ==================== SPEED SLIDER ====================
-const speedSlider = document.getElementById('speedSlider');
-const speedVal = document.getElementById('speedVal');
-speedSlider.addEventListener('input', () => {
-  currentSpeed = parseFloat(speedSlider.value);
-  speedVal.textContent = currentSpeed.toFixed(1);
-  if (currentLayer) updateInfo();
-});
-
-// ==================== DRAWING & MEASUREMENT ====================
-
-// Fix: Manually close the loop if the start and end points are very close
-function ensureClosedLoop(layer) {
-  const latlngs = layer.getLatLngs();
-  if (latlngs.length > 2) {
-    const first = latlngs[0];
-    const last = latlngs[latlngs.length - 1];
-    const dist = first.distanceTo(last);
-    
-    // If they finished drawing within 30 meters of the start point, close it
-    if (dist > 0 && dist < 30) {
-      latlngs.push(first);
-      layer.setLatLngs(latlngs);
-    }
-  }
-}
-
-map.on('pm:create', e => {
-  if (currentLayer) map.removeLayer(currentLayer);
-  currentLayer = e.layer;
-  ensureClosedLoop(currentLayer);
-  updateInfo();
-  analyzeTurns();
-});
-
-map.on('pm:edit', () => {
+// ==================== UTILS & CLEANUP ====================
+function clearExistingPath() {
   if (currentLayer) {
-    ensureClosedLoop(currentLayer);
-    updateInfo();
-    analyzeTurns();
+    map.removeLayer(currentLayer);
+    currentLayer = null;
   }
-});
+  
+  // CRITICAL: Disable Geoman drawing mode to prevent "broken" state
+  map.pm.disableDraw();
+  
+  turns = [];
+  announcedTurns = new Set();
+  
+  // Stop guidance if it's active
+  if (guidanceEnabled) {
+    toggleGuidance(false);
+  }
+  
+  updateInfo();
+}
 
 function updateInfo() {
   const infoDiv = document.getElementById('info');
@@ -163,30 +138,33 @@ function updateInfo() {
   }
   
   infoDiv.style.display = 'block';
-  const line = turf.lineString(currentLayer.getLatLngs().map(p => [p.lng, p.lat]));
+  const latlngs = currentLayer.getLatLngs();
+  if (latlngs.length < 2) return;
+
+  const line = turf.lineString(latlngs.map(p => [p.lng, p.lat]));
   const km = turf.length(line, { units: 'kilometers' });
   const meters = Math.round(km * 1000);
   const minutes = Math.round((km / currentSpeed) * 60);
 
   infoDiv.innerHTML = `
     <strong>Path:</strong> ${meters} m (${km.toFixed(2)} km)<br>
-    <strong>Time @ ${currentSpeed} km/h:</strong> ${minutes} minutes
+    <strong>Est. Time:</strong> ${minutes} mins
   `;
 }
 
-function clearExistingPath() {
-  if (currentLayer) {
-    map.removeLayer(currentLayer);
-    currentLayer = null;
-  }
-  // Reset Geoman state
-  map.pm.disableDraw();
-  turns = [];
-  announcedTurns = new Set();
+// ==================== DRAWING LOGIC ====================
+map.on('pm:create', e => {
+  if (currentLayer && currentLayer !== e.layer) map.removeLayer(currentLayer);
+  currentLayer = e.layer;
+  analyzeTurns();
   updateInfo();
-}
+});
 
-// ==================== ENHANCED TURN DETECTION ====================
+map.on('pm:edit', () => {
+  analyzeTurns();
+  updateInfo();
+});
+
 function analyzeTurns() {
   if (!currentLayer) return;
   const latlngs = currentLayer.getLatLngs();
@@ -195,12 +173,11 @@ function analyzeTurns() {
   turns = [];
   announcedTurns = new Set();
 
-  // Convert Leaflet latlngs to Turf points
   const points = latlngs.map(p => [p.lng, p.lat]);
   const line = turf.lineString(points);
   
-  // Simplify path to remove jitter/small zig-zags
-  const simplified = turf.simplify(line, { tolerance: 0.0002, highQuality: true });
+  // Simplify helps with the "jagged" drawing feel
+  const simplified = turf.simplify(line, { tolerance: 0.0001, highQuality: true });
   const coords = simplified.geometry.coordinates;
 
   for (let i = 1; i < coords.length - 1; i++) {
@@ -208,7 +185,7 @@ function analyzeTurns() {
     const bearing2 = turf.bearing(coords[i], coords[i+1]);
     let diff = (bearing2 - bearing1 + 540) % 360 - 180;
 
-    if (Math.abs(diff) > 25) { // Lowered threshold for better detection
+    if (Math.abs(diff) > 25) {
       const dir = diff > 0 ? 'right' : 'left';
       const intensity = Math.abs(diff) > 70 ? 'sharp' : 'slight';
       turns.push({
@@ -220,123 +197,73 @@ function analyzeTurns() {
   }
 }
 
-let heartbeatInterval;
-
-function startHeartbeat() {
-  stopHeartbeat();
-  heartbeatInterval = setInterval(() => {
-    if (guidanceEnabled) {
-      // Just a tiny volume tweak to keep the audio engine "active"
-      keepAliveAudio.volume = keepAliveAudio.volume === 1 ? 0.99 : 1;
-    }
-  }, 10000); 
-}
-
-function stopHeartbeat() {
-  clearInterval(heartbeatInterval);
-}
-  
-// ==================== BACKGROUND PROCESS MANAGEMENT ====================
+// ==================== BACKGROUND & VOICE ====================
 async function requestWakeLock() {
   if ('wakeLock' in navigator) {
-    try {
-      wakeLock = await navigator.wakeLock.request('screen');
-    } catch (err) {
-      console.warn('Wake Lock failed:', err);
+    try { wakeLock = await navigator.wakeLock.request('screen'); } 
+    catch (err) { console.warn('Wake Lock error:', err); }
+  }
+}
+
+function startHeartbeat() {
+  if (heartbeatInterval) clearInterval(heartbeatInterval);
+  heartbeatInterval = setInterval(() => {
+    if (guidanceEnabled) {
+      keepAliveAudio.volume = keepAliveAudio.volume === 1 ? 0.99 : 1;
     }
-  }
+  }, 10000);
 }
 
-function releaseWakeLock() {
-  if (wakeLock !== null) {
-    wakeLock.release().then(() => { wakeLock = null; });
-  }
-}
-
-// ==================== REAL-TIME GPS & VOICE CHECK ====================
-function updateUserPosition(pos) {
-  const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-  if (userMarker) {
-    userMarker.setLatLng(latlng);
+async function toggleGuidance(forceOff = false) {
+  if (guidanceEnabled || forceOff) {
+    guidanceEnabled = false;
+    playBtn.textContent = '▶️ Start Voice Guidance';
+    keepAliveAudio.pause();
+    clearInterval(heartbeatInterval);
+    if (wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+    }
   } else {
-    userMarker = L.marker(latlng, { title: "You are here" }).addTo(map);
-  }
+    if (!currentLayer) return alert("Draw a path first!");
+    if (!userMarker) return alert("Waiting for GPS...");
 
-  if (guidanceEnabled && turns.length > 0) {
-    checkForTurns(pos.coords.latitude, pos.coords.longitude);
+    guidanceEnabled = true;
+    playBtn.textContent = '🔇 Stop Voice Guidance';
+    
+    await requestWakeLock();
+    keepAliveAudio.play();
+    startHeartbeat();
+    
+    const msg = new SpeechSynthesisUtterance("Guidance started. Keep screen on.");
+    window.speechSynthesis.speak(msg);
   }
 }
 
 function checkForTurns(lat, lng) {
   const userPoint = turf.point([lng, lat]);
-  for (let i = 0; i < turns.length; i++) {
-    if (announcedTurns.has(i)) continue;
-    const turn = turns[i];
+  turns.forEach((turn, i) => {
+    if (announcedTurns.has(i)) return;
     const turnPoint = turf.point([turn.lng, turn.lat]);
     const distMeters = turf.distance(userPoint, turnPoint, { units: 'kilometers' }) * 1000;
 
     if (distMeters <= 60) {
       const u = new SpeechSynthesisUtterance(turn.text);
-      u.rate = 1.05;
-      speechSynthesis.speak(u);
+      window.speechSynthesis.speak(u);
       announcedTurns.add(i);
     }
-  }
+  });
 }
 
-// ==================== VOICE GUIDANCE BUTTON ====================
-const playBtn = document.getElementById('playBtn');
-const keepAliveAudio = document.getElementById('keepAliveAudio');
+// ==================== EVENTS ====================
+playBtn.addEventListener('click', () => toggleGuidance());
 
-playBtn.addEventListener('click', () => {
-  if (!currentLayer) {
-    alert("Draw a path first!");
-    return;
-  }
-  if (!userMarker) {
-    alert("Location access is required for voice guidance.\n\nIt was requested when you opened the page.");
-    return;
-  }
+document.getElementById('clearBtn').addEventListener('click', clearExistingPath);
 
-  if (guidanceEnabled) {
-    guidanceEnabled = false;
-    playBtn.textContent = '▶️ Start Voice Guidance';
-    stopHeartbeat();
-    releaseWakeLock();
-    return;
-  }
-
-  guidanceEnabled = true;
-  playBtn.textContent = '🔇 Stop Voice Guidance';
-  
-  // Request WakeLock immediately
-  await requestWakeLock();
-  
-  // Start Audio & Heartbeat
-  keepAliveAudio.play();
-  startHeartbeat();
-  
-  speechSynthesis.speak(new SpeechSynthesisUtterance("Navigation started. Keep your screen on for best results."));
-});
-
-// ==================== OTHER BUTTONS ====================
-document.getElementById('clearBtn').addEventListener('click', () => {
-  if (currentLayer) {
-    map.removeLayer(currentLayer);
-    currentLayer = null;
-    turns = [];
-    announcedTurns = new Set();
-    
-    // Stop guidance if running
-    if (guidanceEnabled) {
-      guidanceEnabled = false;
-      playBtn.textContent = '▶️ Start Voice Guidance';
-      keepAliveAudio.pause();
-      releaseWakeLock();
-    }
-    
-    updateInfo(); // This will hide the info box
-  }
+speedSlider.addEventListener('input', () => {
+  currentSpeed = parseFloat(speedSlider.value);
+  document.getElementById('speedVal').textContent = currentSpeed.toFixed(1);
+  updateInfo();
 });
 
 document.getElementById('locateBtn').addEventListener('click', () => {
@@ -347,24 +274,21 @@ document.getElementById('locateBtn').addEventListener('click', () => {
   }
 });
 
-// ==================== AUTO REQUEST LOCATION ON PAGE LOAD ====================
+// GPS Initialization
 if (navigator.geolocation) {
-  navigator.geolocation.getCurrentPosition(
+  navigator.geolocation.watchPosition(
     (pos) => {
       const latlng = L.latLng(pos.coords.latitude, pos.coords.longitude);
-      map.flyTo(latlng, 15);
-      userMarker = L.marker(latlng).addTo(map);
-
-      // Start continuous tracking
-      positionWatchId = navigator.geolocation.watchPosition(
-        updateUserPosition,
-        () => {},
-        { enableHighAccuracy: true, maximumAge: 3000, timeout: 10000 }
-      );
+      if (!userMarker) {
+        userMarker = L.marker(latlng).addTo(map);
+        map.flyTo(latlng, 15);
+      } else {
+        userMarker.setLatLng(latlng);
+      }
+      if (guidanceEnabled) checkForTurns(pos.coords.latitude, pos.coords.longitude);
     },
-    () => {
-      // User denied location – drawing still works, voice will just show alert
-    }
+    (err) => console.warn("GPS Error", err),
+    { enableHighAccuracy: true }
   );
 }
 </script>
