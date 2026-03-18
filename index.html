@@ -174,34 +174,68 @@ function updateInfo() {
   `;
 }
 
-// ==================== TURN DETECTION (for voice) ====================
+function clearExistingPath() {
+  if (currentLayer) {
+    map.removeLayer(currentLayer);
+    currentLayer = null;
+  }
+  // Reset Geoman state
+  map.pm.disableDraw();
+  turns = [];
+  announcedTurns = new Set();
+  updateInfo();
+}
+
+// ==================== ENHANCED TURN DETECTION ====================
 function analyzeTurns() {
-  if (!currentLayer || currentLayer.getLatLngs().length < 3) return;
+  if (!currentLayer) return;
+  const latlngs = currentLayer.getLatLngs();
+  if (latlngs.length < 3) return;
+
   turns = [];
   announcedTurns = new Set();
 
-  const coords = currentLayer.getLatLngs();
-  const geoCoords = coords.map(p => [p.lng, p.lat]);
-  const simplified = turf.simplify(turf.lineString(geoCoords), { tolerance: 0.0003 });
-  const points = simplified.geometry.coordinates;
+  // Convert Leaflet latlngs to Turf points
+  const points = latlngs.map(p => [p.lng, p.lat]);
+  const line = turf.lineString(points);
+  
+  // Simplify path to remove jitter/small zig-zags
+  const simplified = turf.simplify(line, { tolerance: 0.0002, highQuality: true });
+  const coords = simplified.geometry.coordinates;
 
-  for (let i = 1; i < points.length - 1; i++) {
-    const b1 = turf.bearing(points[i-1], points[i]);
-    const b2 = turf.bearing(points[i], points[i+1]);
-    let diff = (b2 - b1 + 540) % 360 - 180;
+  for (let i = 1; i < coords.length - 1; i++) {
+    const bearing1 = turf.bearing(coords[i-1], coords[i]);
+    const bearing2 = turf.bearing(coords[i], coords[i+1]);
+    let diff = (bearing2 - bearing1 + 540) % 360 - 180;
 
-    if (Math.abs(diff) > 35) {
+    if (Math.abs(diff) > 25) { // Lowered threshold for better detection
       const dir = diff > 0 ? 'right' : 'left';
-      const sharpness = Math.abs(diff) > 90 ? 'sharply' : 'gently';
+      const intensity = Math.abs(diff) > 70 ? 'sharp' : 'slight';
       turns.push({
-        lat: points[i][1],
-        lng: points[i][0],
-        text: `In about 50 meters, turn ${sharpness} ${dir}`
+        lat: coords[i][1],
+        lng: coords[i][0],
+        text: `In 50 meters, ${intensity} turn ${dir}`
       });
     }
   }
 }
 
+let heartbeatInterval;
+
+function startHeartbeat() {
+  stopHeartbeat();
+  heartbeatInterval = setInterval(() => {
+    if (guidanceEnabled) {
+      // Just a tiny volume tweak to keep the audio engine "active"
+      keepAliveAudio.volume = keepAliveAudio.volume === 1 ? 0.99 : 1;
+    }
+  }, 10000); 
+}
+
+function stopHeartbeat() {
+  clearInterval(heartbeatInterval);
+}
+  
 // ==================== BACKGROUND PROCESS MANAGEMENT ====================
 async function requestWakeLock() {
   if ('wakeLock' in navigator) {
@@ -265,29 +299,24 @@ playBtn.addEventListener('click', () => {
   }
 
   if (guidanceEnabled) {
-    // STOP GUIDANCE
     guidanceEnabled = false;
     playBtn.textContent = '▶️ Start Voice Guidance';
-    speechSynthesis.cancel();
-    keepAliveAudio.pause();
+    stopHeartbeat();
     releaseWakeLock();
     return;
   }
 
-  // START GUIDANCE
   guidanceEnabled = true;
   playBtn.textContent = '🔇 Stop Voice Guidance';
   
-  // 1. Initialize Speech engine
-  speechSynthesis.speak(new SpeechSynthesisUtterance("Voice guidance started."));
+  // Request WakeLock immediately
+  await requestWakeLock();
   
-  // 2. Play silent audio to keep JS loop alive in background
-  keepAliveAudio.play().catch(e => console.warn("Audio keep-alive blocked by browser", e));
+  // Start Audio & Heartbeat
+  keepAliveAudio.play();
+  startHeartbeat();
   
-  // 3. Keep screen on (for supported browsers)
-  requestWakeLock();
-
-  checkForTurns(userMarker.getLatLng().lat, userMarker.getLatLng().lng);
+  speechSynthesis.speak(new SpeechSynthesisUtterance("Navigation started. Keep your screen on for best results."));
 });
 
 // ==================== OTHER BUTTONS ====================
