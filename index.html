@@ -5,16 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>My App</title>
     <link rel="stylesheet" href="style.css">
+    <!-- Leaflet CSS (free CDN) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
     <div class="container">
         <h1>Welcome</h1>
         
-        <button onclick="showStreetView()">Show Satellite Map</button>
+        <button onclick="showStreetView()">Show Street View</button>
         
         <div id="map" style="margin-top: 1.5rem;"></div>
     </div>
 
+    <!-- Leaflet JS (free CDN) – load before your app.js -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
