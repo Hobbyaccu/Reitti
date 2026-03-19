@@ -49,3 +49,8 @@ img {
     margin: 0 auto;
     padding: 0 1rem;
 }
+
+/* Map container */
+#map {
+    height: 500px;
+}
