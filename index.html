@@ -7,8 +7,16 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <h1>Welcome</h1>
+    <div class="container">
+        <h1>Welcome</h1>
+        <p>Click the button below to show a satellite map view.</p>
+        
+        <button onclick="showSatelliteMap()">Show Satellite Map</button>
+        
+        <div id="map" style="margin-top: 1.5rem;"></div>
+    </div>
+
+    <!-- Load JavaScript at the end of body -->
     <script src="app.js"></script>
 </body>
-<button onclick="showSatelliteMap()">Show Satellite Map</button>
 </html>
