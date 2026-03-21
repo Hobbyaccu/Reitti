@@ -2,6 +2,7 @@ let map = null;
 let mainPath = null;          // faded original path
 let walkedPath = null;        // bright trail
 let userMarker = null;        // BLUE DOT
+let headingMarker = null;
 let accuracyCircle = null;
 let offPathLine = null;
 let pathPoints = [];
@@ -12,6 +13,7 @@ let totalDistance = 0;
 
 const WALK_SPEED = 5;
 const OFF_PATH_THRESHOLD = 40;
+const LOOP_SNAP_THRESHOLD = 30;
 
 function calculateDistance(pts) {
     let d = 0;
@@ -77,6 +79,35 @@ function updateUserMarkerAndCircle(rawPos, accuracy) {
     }
 }
 
+function updateHeading(rawPos, heading) {
+    if (!headingMarker) {
+        headingMarker = L.marker(rawPos, {
+            icon: L.divIcon({
+                className: 'heading-arrow',
+                html: '<span>➤</span>',
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
+            }),
+            zIndexOffset: 1000
+        }).addTo(map);
+    } else {
+        headingMarker.setLatLng(rawPos);
+    }
+
+    const el = headingMarker.getElement();
+    if (el) {
+        const span = el.querySelector('span');
+        if (span) {
+            if (heading !== null && heading !== undefined) {
+                span.style.transform = `rotate(${heading}deg)`;
+                span.style.opacity = '1';
+            } else {
+                span.style.opacity = '0.3';
+            }
+        }
+    }
+}
+
 function updateInfo(traveled, speed, accuracy, offPathDist) {
     const walkedKm = (traveled / 1000).toFixed(2);
     const remaining = Math.max(0, totalDistance - traveled);
@@ -108,48 +139,34 @@ function startPermanentLocationWatch() {
             const rawPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
             const acc = pos.coords.accuracy || 30;
 
-            // ALWAYS update the permanent blue dot + accuracy circle
             updateUserMarkerAndCircle(rawPos, acc);
+            updateHeading(rawPos, pos.coords.heading);
 
-            // Only do navigation logic when actively navigating
             if (isNavigating) {
                 const proj = projectPosition(rawPos);
 
-                // Grow walked trail
                 if (walkedPath) {
                     const walkedPts = pathPoints.slice(0, proj.index + 1);
                     walkedPts.push(proj.point);
                     walkedPath.setLatLngs(walkedPts);
                 }
 
-                // Off-path dotted guide
                 const distToPath = rawPos.distanceTo(proj.point);
                 if (distToPath > OFF_PATH_THRESHOLD) {
-                    if (!offPathLine) {
-                        offPathLine = L.polyline([rawPos, proj.point], {
-                            color: '#ff8800', weight: 3, opacity: 0.75, dashArray: '8, 6'
-                        }).addTo(map);
-                    } else {
-                        offPathLine.setLatLngs([rawPos, proj.point]);
-                    }
-                } else if (offPathLine) {
-                    offPathLine.remove();
-                    offPathLine = null;
-                }
+                    if (!offPathLine) offPathLine = L.polyline([rawPos, proj.point], { color: '#ff8800', weight: 3, opacity: 0.75, dashArray: '8, 6' }).addTo(map);
+                    else offPathLine.setLatLngs([rawPos, proj.point]);
+                } else if (offPathLine) { offPathLine.remove(); offPathLine = null; }
 
                 map.panTo(rawPos, { animate: true });
                 updateInfo(proj.traveled, pos.coords.speed, acc, distToPath);
 
-                // Auto-arrival
                 if (totalDistance > 0 && proj.traveled / totalDistance > 0.97) {
                     alert("🎉 You've reached the end!");
                     stopNavigation();
                 }
             }
         },
-        (err) => {
-            if (err.code !== 1) console.error(err);
-        },
+        (err) => { if (err.code !== 1) console.error(err); },
         { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
     );
 }
@@ -159,22 +176,18 @@ function initializeApp() {
 
     map = L.map('map').setView([60.20911396893135, 24.955160312780436], 13);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap &amp; CARTO',
+    // Map change
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
 
-    // Start permanent GPS watch 
     startPermanentLocationWatch();
 
-    // Auto-fly to user on first load
     navigator.geolocation.getCurrentPosition(
-        (pos) => {
-            const userPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
-            map.flyTo(userPos, 15, { duration: 1.5 });
-        },
-        () => console.log("Auto-locate failed — blue dot will appear when you allow location")
+        (pos) => map.flyTo(L.latLng(pos.coords.latitude, pos.coords.longitude), 15, { duration: 1.5 }),
+        () => {}
     );
 
     map.on('click', e => {
@@ -225,8 +238,17 @@ function undoLastPoint() {
 
 function finishDrawing() {
     if (pathPoints.length < 2) return alert("Need at least 2 points");
+
+    if (pathPoints.length >= 3) {
+        const distToStart = pathPoints[0].distanceTo(pathPoints[pathPoints.length - 1]);
+        if (distToStart < LOOP_SNAP_THRESHOLD) {
+            pathPoints[pathPoints.length - 1] = L.latLng(pathPoints[0].lat, pathPoints[0].lng);
+            if (mainPath) mainPath.setLatLngs(pathPoints);
+        }
+    }
+
     isDrawing = false;
-    map.doubleClickZoom.enable();                // enable double-tap zoom while drawing
+    map.doubleClickZoom.enable();
     document.getElementById('undo-btn').style.display = 'none';
     document.getElementById('finish-btn').disabled = true;
     document.getElementById('nav-btn').disabled = false;
@@ -262,10 +284,11 @@ function clearEverything() {
     if (mainPath) { mainPath.remove(); mainPath = null; }
     if (walkedPath) { walkedPath.remove(); walkedPath = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
+    if (headingMarker) { headingMarker.remove(); headingMarker = null; }
     pathPoints = [];
     totalDistance = 0;
     isNavigating = false;
-    if (map) map.doubleClickZoom.enable();   // safety re-enable
+    if (map) map.doubleClickZoom.enable();
     document.getElementById('path-info').style.display = 'none';
     document.getElementById('undo-btn').style.display = 'none';
     document.getElementById('recenter-btn').style.display = 'none';
