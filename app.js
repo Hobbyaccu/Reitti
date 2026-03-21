@@ -171,7 +171,7 @@ function initializeApp() {
         if (!isDrawing) return;
         pathPoints.push(e.latlng);
         if (mainPath) mainPath.setLatLngs(pathPoints);
-        else mainPath = L.polyline(pathPoints, { color: '#00ff88', weight: 6, opacity: 0.85 }).addTo(map);
+        else mainPath = L.polyline(pathPoints, { color: '#09ff00', weight: 6, opacity: 0.85 }).addTo(map);
         document.getElementById('undo-btn').style.display = 'inline-block';
     });
 
@@ -244,7 +244,7 @@ function loadSavedPath() {
     pathPoints = coords.map(c => L.latLng(c[0], c[1]));
 
     if (mainPath) mainPath.remove();
-    mainPath = L.polyline(pathPoints, { color: '#00ff88', weight: 6, opacity: 0.85 }).addTo(map);
+    mainPath = L.polyline(pathPoints, { color: '#00ff00', weight: 6, opacity: 0.85 }).addTo(map);
 
     totalDistance = calculateDistance(pathPoints);
     document.getElementById('nav-btn').disabled = false;
@@ -284,7 +284,7 @@ function startNavigation() {
     if (pathPoints.length < 2) return alert("Draw a path first");
 
     if (mainPath) mainPath.setStyle({ color: '#aaaaaa', weight: 4, opacity: 0.5 });
-    walkedPath = L.polyline([], { color: '#00ff88', weight: 8, opacity: 1 }).addTo(map);
+    walkedPath = L.polyline([], { color: '#33ff00', weight: 8, opacity: 1 }).addTo(map);
 
     maxReachedIndex = 0;
     isNavigating = true;
