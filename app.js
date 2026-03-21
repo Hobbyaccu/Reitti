@@ -83,6 +83,18 @@ function initializeApp() {
         maxZoom: 19
     }).addTo(map);
 
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const userPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+            map.flyTo(userPos, 15, { duration: 1.5 }); // smooth fly-in
+            console.log("Auto-located to your real position");
+        },
+        (err) => {
+            console.log("Auto-locate failed (permission or no GPS) — staying at Helsinki fallback");
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+
     map.on('click', e => {
         if (!isDrawing) return;
         pathPoints.push(e.latlng);
@@ -98,6 +110,29 @@ function initializeApp() {
 
     const saved = localStorage.getItem('customPath');
     if (saved) document.getElementById('load-btn').disabled = false;
+}
+
+function findMe() {
+    if (!map) return alert("Load map first");
+
+    navigator.geolocation.getCurrentPosition(
+        (pos) => {
+            const userPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+            map.flyTo(userPos, Math.max(map.getZoom(), 15), { duration: 1 });
+            
+            const tempMarker = L.circleMarker(userPos, {
+                radius: 12,
+                color: '#00ff00',
+                fillColor: '#00ff00',
+                fillOpacity: 0.6,
+                weight: 4
+            }).addTo(map);
+            setTimeout(() => tempMarker.remove(), 2500); // disappears after 2.5s
+        },
+        (err) => {
+            alert("Couldn't get your location.\n\nMake sure location services are enabled in your browser/phone.");
+        }
+    );
 }
 
 function startDrawing() { 
