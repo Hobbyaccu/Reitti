@@ -1,19 +1,21 @@
 let map = null;
-let mainPath = null;          // faded original path
-let walkedPath = null;        // bright trail
-let userMarker = null;        // BLUE DOT
-let headingMarker = null;
+let mainPath = null;
+let walkedPath = null;
+let userMarker = null;
 let accuracyCircle = null;
+let headingMarker = null;
 let offPathLine = null;
 let pathPoints = [];
 let isDrawing = false;
 let isNavigating = false;
-let locationWatchId = null;   // permanent GPS watch
+let locationWatchId = null;
 let totalDistance = 0;
+let maxReachedIndex = 0;
 
 const WALK_SPEED = 5;
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
+const ARRIVAL_THRESHOLD = 0.6; // 60% of path traveled, edge cases.
 
 function calculateDistance(pts) {
     let d = 0;
@@ -55,56 +57,26 @@ function projectPosition(currentPos) {
 
 function updateUserMarkerAndCircle(rawPos, accuracy) {
     if (!userMarker) {
-        userMarker = L.circleMarker(rawPos, {
-            radius: 10,
-            color: '#0066ff',
-            fillColor: '#00aaff',
-            fillOpacity: 1,
-            weight: 3
-        }).addTo(map);
-    } else {
-        userMarker.setLatLng(rawPos);
-    }
+        userMarker = L.circleMarker(rawPos, { radius: 10, color: '#0066ff', fillColor: '#00aaff', fillOpacity: 1, weight: 3 }).addTo(map);
+    } else userMarker.setLatLng(rawPos);
 
     if (!accuracyCircle) {
-        accuracyCircle = L.circle(rawPos, {
-            radius: accuracy || 30,
-            color: '#3388ff',
-            fillColor: '#3388ff',
-            fillOpacity: 0.15,
-            weight: 2
-        }).addTo(map);
-    } else {
-        accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
-    }
+        accuracyCircle = L.circle(rawPos, { radius: accuracy || 30, color: '#3388ff', fillColor: '#3388ff', fillOpacity: 0.15, weight: 2 }).addTo(map);
+    } else accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
 }
 
 function updateHeading(rawPos, heading) {
     if (!headingMarker) {
         headingMarker = L.marker(rawPos, {
-            icon: L.divIcon({
-                className: 'heading-arrow',
-                html: '<span>➤</span>',
-                iconSize: [28, 28],
-                iconAnchor: [14, 14]
-            }),
+            icon: L.divIcon({ className: 'heading-arrow', html: '<span>➤</span>', iconSize: [28, 28], iconAnchor: [14, 14] }),
             zIndexOffset: 1000
         }).addTo(map);
-    } else {
-        headingMarker.setLatLng(rawPos);
-    }
+    } else headingMarker.setLatLng(rawPos);
 
     const el = headingMarker.getElement();
     if (el) {
         const span = el.querySelector('span');
-        if (span) {
-            if (heading !== null && heading !== undefined) {
-                span.style.transform = `rotate(${heading}deg)`;
-                span.style.opacity = '1';
-            } else {
-                span.style.opacity = '0.3';
-            }
-        }
+        if (span) span.style.transform = heading !== null ? `rotate(${heading}deg)` : 'rotate(0deg)';
     }
 }
 
@@ -115,6 +87,7 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
     const percent = totalDistance > 0 ? Math.round((traveled / totalDistance) * 100) : 0;
     const speedKmh = speed !== null ? (speed * 3.6).toFixed(1) : "—";
     const accM = accuracy ? accuracy.toFixed(0) : "—";
+    const checkpoints = pathPoints.length > 0 ? Math.min(maxReachedIndex + 1, pathPoints.length) : 0;
 
     let extra = '';
     if (offPathDist > OFF_PATH_THRESHOLD) {
@@ -125,6 +98,7 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
         <strong>Walked:</strong> ${walkedKm} km 
         <strong>Remaining:</strong> ${remKm} km<br>
         <strong>Progress:</strong> ${percent}% 
+        <strong>Checkpoints:</strong> ${checkpoints} / ${pathPoints.length} 
         <strong>Speed:</strong> ${speedKmh} km/h 
         <strong>Accuracy:</strong> ±${accM} m${extra}
     `;
@@ -145,6 +119,9 @@ function startPermanentLocationWatch() {
             if (isNavigating) {
                 const proj = projectPosition(rawPos);
 
+                // Update farthest point reached (the real point tracker)
+                if (proj.index > maxReachedIndex) maxReachedIndex = proj.index;
+
                 if (walkedPath) {
                     const walkedPts = pathPoints.slice(0, proj.index + 1);
                     walkedPts.push(proj.point);
@@ -160,8 +137,10 @@ function startPermanentLocationWatch() {
                 map.panTo(rawPos, { animate: true });
                 updateInfo(proj.traveled, pos.coords.speed, acc, distToPath);
 
-                if (totalDistance > 0 && proj.traveled / totalDistance > 0.97) {
-                    alert("🎉 You've reached the end!");
+                if (totalDistance > 0 &&
+                    proj.traveled / totalDistance > ARRIVAL_THRESHOLD &&
+                    maxReachedIndex >= pathPoints.length - 2) {
+                    alert("🎉 You've reached the end! Great job!");
                     stopNavigation();
                 }
             }
@@ -173,10 +152,8 @@ function startPermanentLocationWatch() {
 
 function initializeApp() {
     if (map) return;
-
     map = L.map('map').setView([60.20911396893135, 24.955160312780436], 13);
 
-    // Map change
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: 'abcd',
@@ -239,6 +216,7 @@ function undoLastPoint() {
 function finishDrawing() {
     if (pathPoints.length < 2) return alert("Need at least 2 points");
 
+    // Closed-loop auto-snap
     if (pathPoints.length >= 3) {
         const distToStart = pathPoints[0].distanceTo(pathPoints[pathPoints.length - 1]);
         if (distToStart < LOOP_SNAP_THRESHOLD) {
@@ -287,6 +265,7 @@ function clearEverything() {
     if (headingMarker) { headingMarker.remove(); headingMarker = null; }
     pathPoints = [];
     totalDistance = 0;
+    maxReachedIndex = 0;
     isNavigating = false;
     if (map) map.doubleClickZoom.enable();
     document.getElementById('path-info').style.display = 'none';
@@ -307,6 +286,7 @@ function startNavigation() {
     if (mainPath) mainPath.setStyle({ color: '#aaaaaa', weight: 4, opacity: 0.5 });
     walkedPath = L.polyline([], { color: '#00ff88', weight: 8, opacity: 1 }).addTo(map);
 
+    maxReachedIndex = 0;
     isNavigating = true;
     document.getElementById('stop-btn').style.display = 'inline-block';
     document.getElementById('nav-btn').disabled = true;
