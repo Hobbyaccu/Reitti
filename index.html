@@ -12,15 +12,19 @@
 
 <body>
     <div class="container">
-        <h1>Welcome</h1>
+        <h1>go away, leaf(e) :c</h1>
 
-        <div style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
+        <div style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
             <button onclick="initializeApp()" id="init-btn">Load Map</button>
-            <button onclick="startDrawing()" id="draw-btn" disabled>Start Drawing Path</button>
+            <button onclick="startDrawing()" id="draw-btn" disabled>Start Drawing</button>
+            <button onclick="undoLastPoint()" id="undo-btn" style="display:none;">Undo Last</button>
             <button onclick="finishDrawing()" id="finish-btn" disabled>Finish Path</button>
-            <button onclick="clearPath()" id="clear-btn" disabled>Clear Path</button>
-            <button onclick="startNavigation()" id="nav-btn" disabled>Start Navigation (Live GPS)</button>
-            <button onclick="stopNavigation()" id="stop-btn" style="display:none;">Stop Navigation</button>
+            <button onclick="clearPath()" id="clear-btn" disabled>Clear</button>
+            <button onclick="loadSavedPath()" id="load-btn" disabled>Load Saved Path</button>
+
+            <button onclick="startNavigation()" id="nav-btn" disabled>Start Navigation</button>
+            <button onclick="recenterMap()" id="recenter-btn" style="display:none;">Recenter</button>
+            <button onclick="stopNavigation()" id="stop-btn" style="display:none;">Stop</button>
         </div>
 
         <div id="path-info"
