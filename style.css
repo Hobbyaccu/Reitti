@@ -73,3 +73,14 @@ button:disabled {
 button:hover:not(:disabled) {
     background: #0055aa;
 }
+
+.heading-arrow {
+    pointer-events: none;
+}
+.heading-arrow span {
+    display: block;
+    font-size: 26px;
+    color: #0066ff;
+    text-shadow: 0 0 6px rgba(255,255,255,0.9);
+    line-height: 1;
+}
