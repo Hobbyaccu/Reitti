@@ -7,7 +7,7 @@ let watchId = null;
 let totalDistanceMeters = 0;
 let estimatedMinutes = 0;
 
-const WALKING_SPEED_KMH = 5; 
+const WALKING_SPEED_KMH = 5;
 
 // Helper: distance between two points in meters (Leaflet already gives us this!)
 function calculateDistance(points) {
