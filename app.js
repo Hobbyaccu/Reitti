@@ -1,257 +1,236 @@
 let map = null;
-let pathPolyline = null;
+let mainPath = null;          // faded original path
+let walkedPath = null;        // bright trail behind you
+let userMarker = null;
+let accuracyCircle = null;
 let pathPoints = [];
 let isDrawing = false;
-let userMarker = null;
 let watchId = null;
-let totalDistanceMeters = 0;
-let estimatedMinutes = 0;
+let totalDistance = 0;
 
-const WALKING_SPEED_KMH = 5;
+const WALK_SPEED = 5; // km/h
 
-// Helper: distance between two points in meters (Leaflet already gives us this!)
-function calculateDistance(points) {
-    let total = 0;
-    for (let i = 0; i < points.length - 1; i++) {
-        total += points[i].distanceTo(points[i + 1]);
-    }
-    return total;
+function calculateDistance(pts) {
+    let d = 0;
+    for (let i = 0; i < pts.length - 1; i++) d += pts[i].distanceTo(pts[i + 1]);
+    return d;
 }
 
-// Helper: closest point on a line segment + the parameter t (0-1)
-function closestPointOnSegment(point, a, b) {
-    const ax = a.lng, ay = a.lat;
-    const bx = b.lng, by = b.lat;
-    const px = point.lng, py = point.lat;
-
-    const dx = bx - ax;
-    const dy = by - ay;
+function closestPointOnSegment(p, a, b) {
+    const dx = b.lng - a.lng;
+    const dy = b.lat - a.lat;
     const len2 = dx * dx + dy * dy;
     if (len2 === 0) return { point: a, t: 0 };
-
-    let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+    let t = ((p.lng - a.lng) * dx + (p.lat - a.lat) * dy) / len2;
     t = Math.max(0, Math.min(1, t));
-
-    const cx = ax + t * dx;
-    const cy = ay + t * dy;
-
-    return {
-        point: L.latLng(cy, cx),
-        t: t
-    };
+    return { point: L.latLng(a.lat + t * dy, a.lng + t * dx), t };
 }
 
-function projectAndGetProgress(currentPos, points) {
-    if (points.length < 2) return { point: currentPos, traveled: 0 };
+function projectPosition(currentPos) {
+    if (pathPoints.length < 2) return { point: currentPos, traveled: 0, index: 0 };
 
-    let minDist = Infinity;
-    let closest = null;
-    let bestIndex = -1;
-    let bestT = 0;
-
-    for (let i = 0; i < points.length - 1; i++) {
-        const p1 = points[i];
-        const p2 = points[i + 1];
-        const result = closestPointOnSegment(currentPos, p1, p2);
-        const distToProj = currentPos.distanceTo(result.point);
-
-        if (distToProj < minDist) {
-            minDist = distToProj;
-            closest = result.point;
+    let bestDist = Infinity, bestPoint = null, bestIndex = 0, bestT = 0;
+    for (let i = 0; i < pathPoints.length - 1; i++) {
+        const res = closestPointOnSegment(currentPos, pathPoints[i], pathPoints[i + 1]);
+        const dist = currentPos.distanceTo(res.point);
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestPoint = res.point;
             bestIndex = i;
-            bestT = result.t;
+            bestT = res.t;
         }
     }
 
-    // Calculate real distance traveled along the path up to the projected point
     let traveled = 0;
-    for (let j = 0; j < bestIndex; j++) {
-        traveled += points[j].distanceTo(points[j + 1]);
-    }
-    const segmentLength = points[bestIndex].distanceTo(points[bestIndex + 1]);
-    traveled += bestT * segmentLength;
+    for (let i = 0; i < bestIndex; i++) traveled += pathPoints[i].distanceTo(pathPoints[i + 1]);
+    traveled += bestT * pathPoints[bestIndex].distanceTo(pathPoints[bestIndex + 1]);
 
-    return { point: closest, traveled: traveled };
+    return { point: bestPoint, traveled, index: bestIndex };
 }
 
-// Update info panel
-function updatePathInfo() {
-    const infoDiv = document.getElementById('path-info');
-    const distKm = (totalDistanceMeters / 1000).toFixed(2);
-    const progress = totalDistanceMeters > 0 
-        ? Math.min(100, Math.max(0, (0 / totalDistanceMeters) * 100)) // will be updated live
-        : 0;
+function updateInfo(traveled, speed, accuracy) {
+    const walkedKm = (traveled / 1000).toFixed(2);
+    const remaining = Math.max(0, totalDistance - traveled);
+    const remKm = (remaining / 1000).toFixed(2);
+    const percent = totalDistance > 0 ? Math.round((traveled / totalDistance) * 100) : 0;
+    const speedKmh = speed !== null ? (speed * 3.6).toFixed(1) : "—";
+    const accM = accuracy ? accuracy.toFixed(0) : "—";
 
-    infoDiv.innerHTML = `
-        <strong>Path Distance:</strong> ${distKm} km<br>
-        <strong>Estimated walking time:</strong> ${estimatedMinutes} min<br>
-        <strong>Progress along path:</strong> <span id="live-progress">0%</span>
+    document.getElementById('path-info').innerHTML = `
+        <strong>Walked:</strong> ${walkedKm} km 
+        <strong>Remaining:</strong> ${remKm} km<br>
+        <strong>Progress:</strong> ${percent}% 
+        <strong>Speed:</strong> ${speedKmh} km/h 
+        <strong>Accuracy:</strong> ±${accM} m
     `;
-    infoDiv.style.display = 'block';
-}
-
-// Live updates
-function updateLiveProgress(traveled) {
-    const percent = totalDistanceMeters > 0 
-        ? Math.min(100, Math.max(0, Math.round((traveled / totalDistanceMeters) * 100)))
-        : 0;
-    const span = document.getElementById('live-progress');
-    if (span) span.textContent = `${percent}%`;
+    document.getElementById('path-info').style.display = 'block';
 }
 
 function initializeApp() {
-    if (map) return; // already loaded
-
+    if (map) return;
     map = L.map('map').setView([60.20911396893135, 24.955160312780436], 13);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; OpenStreetMap &amp; CARTO',
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
 
-    // Enable map clicks for drawing
-    map.on('click', (e) => {
+    map.on('click', e => {
         if (!isDrawing) return;
         pathPoints.push(e.latlng);
-        if (pathPolyline) {
-            pathPolyline.setLatLngs(pathPoints);
-        } else {
-            pathPolyline = L.polyline(pathPoints, {
-                color: '#00ff00',
-                weight: 5,
-                opacity: 0.9
-            }).addTo(map);
+        if (mainPath) mainPath.setLatLngs(pathPoints);
+        else {
+            mainPath = L.polyline(pathPoints, { color: '#00ff88', weight: 6, opacity: 0.85 }).addTo(map);
         }
+        document.getElementById('undo-btn').style.display = 'inline-block';
     });
 
-    // Enable the drawing buttons
     document.getElementById('draw-btn').disabled = false;
-    document.getElementById('init-btn').disabled = true; // one-time init
+    document.getElementById('init-btn').disabled = true;
+
+    // Try to load saved path
+    const saved = localStorage.getItem('customPath');
+    if (saved) document.getElementById('load-btn').disabled = false;
 }
 
 function startDrawing() {
-    if (!map) {
-        alert("Load the map first!");
-        return;
-    }
-    // Reset previous path
-    if (pathPolyline) pathPolyline.remove();
-    pathPoints = [];
-    pathPolyline = null;
+    if (!map) return alert("Load map first");
+    clearEverything();
     isDrawing = true;
-
-    alert("✅ Tap the map to add points for your custom path.\nWhen finished, click 'Finish Path'.");
     document.getElementById('finish-btn').disabled = false;
+    document.getElementById('undo-btn').style.display = 'inline-block';
+    alert("Tap map to draw your path → Finish when done");
+}
+
+function undoLastPoint() {
+    if (!isDrawing || pathPoints.length === 0) return;
+    pathPoints.pop();
+    if (mainPath) mainPath.setLatLngs(pathPoints);
+    if (pathPoints.length === 0) document.getElementById('undo-btn').style.display = 'none';
 }
 
 function finishDrawing() {
-    if (pathPoints.length < 2) {
-        alert("Add at least 2 points by tapping the map!");
-        return;
-    }
+    if (pathPoints.length < 2) return alert("Need at least 2 points");
     isDrawing = false;
+    document.getElementById('undo-btn').style.display = 'none';
     document.getElementById('finish-btn').disabled = true;
     document.getElementById('nav-btn').disabled = false;
     document.getElementById('clear-btn').disabled = false;
+    document.getElementById('load-btn').disabled = true;
 
-    // Calculate once
-    totalDistanceMeters = calculateDistance(pathPoints);
-    const distKm = totalDistanceMeters / 1000;
-    estimatedMinutes = Math.round((distKm / WALKING_SPEED_KMH) * 60);
+    totalDistance = calculateDistance(pathPoints);
+    savePathToStorage();
+}
 
-    updatePathInfo();
+function loadSavedPath() {
+    const raw = localStorage.getItem('customPath');
+    if (!raw) return;
+    const coords = JSON.parse(raw);
+    pathPoints = coords.map(c => L.latLng(c[0], c[1]));
+
+    if (mainPath) mainPath.remove();
+    mainPath = L.polyline(pathPoints, { color: '#00ff88', weight: 6, opacity: 0.85 }).addTo(map);
+
+    totalDistance = calculateDistance(pathPoints);
+    document.getElementById('nav-btn').disabled = false;
+    document.getElementById('clear-btn').disabled = false;
+    document.getElementById('load-btn').disabled = true;
+    updateInfo(0, null, null);
+}
+
+function savePathToStorage() {
+    const data = pathPoints.map(p => [p.lat, p.lng]);
+    localStorage.setItem('customPath', JSON.stringify(data));
+}
+
+function clearEverything() {
+    if (mainPath) { mainPath.remove(); mainPath = null; }
+    if (walkedPath) { walkedPath.remove(); walkedPath = null; }
+    if (userMarker) { userMarker.remove(); userMarker = null; }
+    if (accuracyCircle) { accuracyCircle.remove(); accuracyCircle = null; }
+    pathPoints = [];
+    totalDistance = 0;
+    if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    document.getElementById('path-info').style.display = 'none';
+    document.getElementById('undo-btn').style.display = 'none';
+    document.getElementById('recenter-btn').style.display = 'none';
 }
 
 function clearPath() {
-    if (pathPolyline) pathPolyline.remove();
-    pathPoints = [];
-    pathPolyline = null;
-    totalDistanceMeters = 0;
-    estimatedMinutes = 0;
-    isDrawing = false;
-
-    if (userMarker) {
-        userMarker.remove();
-        userMarker = null;
-    }
-    if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-    }
-
-    document.getElementById('path-info').style.display = 'none';
+    clearEverything();
+    localStorage.removeItem('customPath');
     document.getElementById('draw-btn').disabled = false;
-    document.getElementById('nav-btn').disabled = true;
-    document.getElementById('stop-btn').style.display = 'none';
+    document.getElementById('load-btn').disabled = false;
 }
 
 function startNavigation() {
-    if (!map || pathPoints.length < 2) {
-        alert("Draw and finish a path first!");
-        return;
-    }
+    if (pathPoints.length < 2) return alert("Draw a path first");
+
+    // Fade the original path
+    if (mainPath) mainPath.setStyle({ color: '#aaaaaa', weight: 4, opacity: 0.5 });
+
+    // Create bright walked trail
+    walkedPath = L.polyline([], { color: '#00ff88', weight: 8, opacity: 1 }).addTo(map);
 
     document.getElementById('stop-btn').style.display = 'inline-block';
     document.getElementById('nav-btn').disabled = true;
+    document.getElementById('recenter-btn').style.display = 'inline-block';
 
-    watchId = navigator.geolocation.watchPosition(
-        (position) => {
-            const userPos = L.latLng(
-                position.coords.latitude,
-                position.coords.longitude
-            );
+    watchId = navigator.geolocation.watchPosition(pos => {
+        const rawPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+        const proj = projectPosition(rawPos);
 
-            const projection = projectAndGetProgress(userPos, pathPoints);
-
-            // center dot
-            if (!userMarker) {
-                userMarker = L.circleMarker(projection.point, {
-                    radius: 9,
-                    color: '#00aaff',
-                    fillColor: '#00aaff',
-                    fillOpacity: 1,
-                    weight: 3,
-                    opacity: 1
-                }).addTo(map);
-            } else {
-                userMarker.setLatLng(projection.point);
-            }
-
-            // Center map on current location
-            map.panTo(projection.point, { animate: true });
-
-            // progress update
-            updateLiveProgress(projection.traveled);
-        },
-        (error) => {
-            console.error(error);
-            alert("GPS error: " + error.message + "\n\nMake sure location is enabled and try outdoors.");
-        },
-        {
-            enableHighAccuracy: true,   // high accuracy for navigation
-            maximumAge: 3000,
-            timeout: 8000
+        // Blue dot
+        if (!userMarker) {
+            userMarker = L.circleMarker(proj.point, { radius: 10, color: '#0066ff', fillColor: '#00aaff', fillOpacity: 1, weight: 3 }).addTo(map);
+        } else {
+            userMarker.setLatLng(proj.point);
         }
-    );
+
+        // Accuracy circle
+        if (!accuracyCircle) {
+            accuracyCircle = L.circle(proj.point, {
+                radius: pos.coords.accuracy || 30,
+                color: '#3388ff',
+                fillColor: '#3388ff',
+                fillOpacity: 0.15,
+                weight: 2
+            }).addTo(map);
+        } else {
+            accuracyCircle.setLatLng(proj.point).setRadius(pos.coords.accuracy || 30);
+        }
+
+        // Grow the bright walked trail
+        const walkedPts = pathPoints.slice(0, proj.index + 1);
+        walkedPts.push(proj.point);
+        walkedPath.setLatLngs(walkedPts);
+
+        map.panTo(proj.point, { animate: true });
+
+        updateInfo(proj.traveled, pos.coords.speed, pos.coords.accuracy);
+
+        // Auto-arrival
+        if (proj.traveled / totalDistance > 0.97) {
+            alert("🎉 You've reached the end!");
+            stopNavigation();
+        }
+    }, err => {
+        if (err.code === 1) console.log("Permission denied (normal in dev tools)");
+        else console.error(err);
+    }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 });
 }
 
 function stopNavigation() {
-    if (watchId) {
-        navigator.geolocation.clearWatch(watchId);
-        watchId = null;
-    }
-    if (userMarker) {
-        userMarker.remove();
-        userMarker = null;
-    }
+    if (watchId) navigator.geolocation.clearWatch(watchId);
+    watchId = null;
     document.getElementById('stop-btn').style.display = 'none';
+    document.getElementById('recenter-btn').style.display = 'none';
     document.getElementById('nav-btn').disabled = false;
 }
 
-// Auto-init
-window.onload = () => {
-    setTimeout(() => {
-        if (!map) initializeApp();
-    }, 100);
-};
+function recenterMap() {
+    if (userMarker) map.flyTo(userMarker.getLatLng(), map.getZoom());
+}
+
+window.onload = () => setTimeout(() => { if (!map) initializeApp(); }, 200);
