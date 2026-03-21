@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,16 +9,31 @@
     <!-- Leaflet CSS (free CDN) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
+
 <body>
     <div class="container">
         <h1>Welcome</h1>
-        
-        <button onclick="showStreetView()">Show Street View</button>
-        
+
+        <div style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem;">
+            <button onclick="initializeApp()" id="init-btn">Load Map</button>
+            <button onclick="startDrawing()" id="draw-btn" disabled>Start Drawing Path</button>
+            <button onclick="finishDrawing()" id="finish-btn" disabled>Finish Path</button>
+            <button onclick="clearPath()" id="clear-btn" disabled>Clear Path</button>
+            <button onclick="startNavigation()" id="nav-btn" disabled>Start Navigation (Live GPS)</button>
+            <button onclick="stopNavigation()" id="stop-btn" style="display:none;">Stop Navigation</button>
+        </div>
+
+        <div id="path-info"
+            style="display:none; background:#f8f8f8; padding:1rem; border-radius:8px; font-size:0.95rem; margin-bottom:1rem;">
+            <!-- Filled by JS -->
+        </div>
+
         <div id="map" style="margin-top: 1.5rem;"></div>
     </div>
 
+    <!-- Leaflet JS (free CDN) – load before your app.js -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="app.js"></script>
 </body>
+
 </html>
