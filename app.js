@@ -15,7 +15,7 @@ let maxReachedIndex = 0;
 const WALK_SPEED = 5;
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
-const ARRIVAL_THRESHOLD = 0.6; // 60% of path traveled, edge cases.
+const ARRIVAL_THRESHOLD = 0.95; // 95% of path traveled, edge cases.
 
 function calculateDistance(pts) {
     let d = 0;
@@ -57,11 +57,11 @@ function projectPosition(currentPos) {
 
 function updateUserMarkerAndCircle(rawPos, accuracy) {
     if (!userMarker) {
-        userMarker = L.circleMarker(rawPos, { radius: 10, color: '#0066ff', fillColor: '#00aaff', fillOpacity: 1, weight: 3 }).addTo(map);
+        userMarker = L.circleMarker(rawPos, { radius: 10, color: '#29ffdb', fillColor: '#19fff3', fillOpacity: 0.25, weight: 3 }).addTo(map);
     } else userMarker.setLatLng(rawPos);
 
     if (!accuracyCircle) {
-        accuracyCircle = L.circle(rawPos, { radius: accuracy || 30, color: '#3388ff', fillColor: '#3388ff', fillOpacity: 0.15, weight: 2 }).addTo(map);
+        accuracyCircle = L.circle(rawPos, { radius: accuracy || 30, color: '#14e1fc', fillColor: '#77b0ff', fillOpacity: 0.15, weight: 2 }).addTo(map);
     } else accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
 }
 
