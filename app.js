@@ -68,7 +68,7 @@ function updateUserMarkerAndCircle(rawPos, accuracy) {
 function updateHeading(rawPos, heading) {
     if (!headingMarker) {
         headingMarker = L.marker(rawPos, {
-            icon: L.divIcon({ className: 'heading-arrow', html: '<span>➤</span>', iconSize: [28, 28], iconAnchor: [14, 14] }),
+            icon: L.divIcon({ className: 'heading-arrow', html: '<span>▲</span>', iconSize: [28, 28], iconAnchor: [14, 14] }),
             zIndexOffset: 1000
         }).addTo(map);
     } else headingMarker.setLatLng(rawPos);
