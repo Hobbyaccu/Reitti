@@ -1,16 +1,17 @@
 let map = null;
-let mainPath = null;          
-let walkedPath = null;        
-let userMarker = null;        
+let mainPath = null;          // faded original path
+let walkedPath = null;        // bright trail
+let userMarker = null;        // BLUE DOT
 let accuracyCircle = null;
-let offPathLine = null;       
+let offPathLine = null;
 let pathPoints = [];
 let isDrawing = false;
-let watchId = null;
+let isNavigating = false;
+let locationWatchId = null;   // permanent GPS watch
 let totalDistance = 0;
 
-const WALK_SPEED = 5; // km/h
-const OFF_PATH_THRESHOLD = 40; 
+const WALK_SPEED = 5;
+const OFF_PATH_THRESHOLD = 40;
 
 function calculateDistance(pts) {
     let d = 0;
@@ -50,6 +51,32 @@ function projectPosition(currentPos) {
     return { point: bestPoint, traveled, index: bestIndex };
 }
 
+function updateUserMarkerAndCircle(rawPos, accuracy) {
+    if (!userMarker) {
+        userMarker = L.circleMarker(rawPos, {
+            radius: 10,
+            color: '#0066ff',
+            fillColor: '#00aaff',
+            fillOpacity: 1,
+            weight: 3
+        }).addTo(map);
+    } else {
+        userMarker.setLatLng(rawPos);
+    }
+
+    if (!accuracyCircle) {
+        accuracyCircle = L.circle(rawPos, {
+            radius: accuracy || 30,
+            color: '#3388ff',
+            fillColor: '#3388ff',
+            fillOpacity: 0.15,
+            weight: 2
+        }).addTo(map);
+    } else {
+        accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
+    }
+}
+
 function updateInfo(traveled, speed, accuracy, offPathDist) {
     const walkedKm = (traveled / 1000).toFixed(2);
     const remaining = Math.max(0, totalDistance - traveled);
@@ -73,8 +100,63 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
     document.getElementById('path-info').style.display = 'block';
 }
 
+function startPermanentLocationWatch() {
+    if (locationWatchId) return;
+
+    locationWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+            const rawPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
+            const acc = pos.coords.accuracy || 30;
+
+            // ALWAYS update the permanent blue dot + accuracy circle
+            updateUserMarkerAndCircle(rawPos, acc);
+
+            // Only do navigation logic when actively navigating
+            if (isNavigating) {
+                const proj = projectPosition(rawPos);
+
+                // Grow walked trail
+                if (walkedPath) {
+                    const walkedPts = pathPoints.slice(0, proj.index + 1);
+                    walkedPts.push(proj.point);
+                    walkedPath.setLatLngs(walkedPts);
+                }
+
+                // Off-path dotted guide
+                const distToPath = rawPos.distanceTo(proj.point);
+                if (distToPath > OFF_PATH_THRESHOLD) {
+                    if (!offPathLine) {
+                        offPathLine = L.polyline([rawPos, proj.point], {
+                            color: '#ff8800', weight: 3, opacity: 0.75, dashArray: '8, 6'
+                        }).addTo(map);
+                    } else {
+                        offPathLine.setLatLngs([rawPos, proj.point]);
+                    }
+                } else if (offPathLine) {
+                    offPathLine.remove();
+                    offPathLine = null;
+                }
+
+                map.panTo(rawPos, { animate: true });
+                updateInfo(proj.traveled, pos.coords.speed, acc, distToPath);
+
+                // Auto-arrival
+                if (totalDistance > 0 && proj.traveled / totalDistance > 0.97) {
+                    alert("🎉 You've reached the end!");
+                    stopNavigation();
+                }
+            }
+        },
+        (err) => {
+            if (err.code !== 1) console.error(err);
+        },
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+    );
+}
+
 function initializeApp() {
     if (map) return;
+
     map = L.map('map').setView([60.20911396893135, 24.955160312780436], 13);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
@@ -83,30 +165,29 @@ function initializeApp() {
         maxZoom: 19
     }).addTo(map);
 
+    // Start permanent GPS watch 
+    startPermanentLocationWatch();
+
+    // Auto-fly to user on first load
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             const userPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
-            map.flyTo(userPos, 15, { duration: 1.5 }); // smooth fly-in
-            console.log("Auto-located to your real position");
+            map.flyTo(userPos, 15, { duration: 1.5 });
         },
-        (err) => {
-            console.log("Auto-locate failed (permission or no GPS) — staying at Helsinki fallback");
-        },
-        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+        () => console.log("Auto-locate failed — blue dot will appear when you allow location")
     );
 
     map.on('click', e => {
         if (!isDrawing) return;
         pathPoints.push(e.latlng);
         if (mainPath) mainPath.setLatLngs(pathPoints);
-        else {
-            mainPath = L.polyline(pathPoints, { color: '#00ff88', weight: 6, opacity: 0.85 }).addTo(map);
-        }
+        else mainPath = L.polyline(pathPoints, { color: '#00ff88', weight: 6, opacity: 0.85 }).addTo(map);
         document.getElementById('undo-btn').style.display = 'inline-block';
     });
 
     document.getElementById('draw-btn').disabled = false;
     document.getElementById('init-btn').disabled = true;
+    document.getElementById('findme-btn').style.display = 'inline-block';
 
     const saved = localStorage.getItem('customPath');
     if (saved) document.getElementById('load-btn').disabled = false;
@@ -114,46 +195,38 @@ function initializeApp() {
 
 function findMe() {
     if (!map) return alert("Load map first");
-
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             const userPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
             map.flyTo(userPos, Math.max(map.getZoom(), 15), { duration: 1 });
-            
-            const tempMarker = L.circleMarker(userPos, {
-                radius: 12,
-                color: '#00ff00',
-                fillColor: '#00ff00',
-                fillOpacity: 0.6,
-                weight: 4
-            }).addTo(map);
-            setTimeout(() => tempMarker.remove(), 2500); // disappears after 2.5s
+            const temp = L.circleMarker(userPos, { radius: 14, color: '#00ff00', fillOpacity: 0.6, weight: 5 }).addTo(map);
+            setTimeout(() => temp.remove(), 2200);
         },
-        (err) => {
-            alert("Couldn't get your location.\n\nMake sure location services are enabled in your browser/phone.");
-        }
+        () => alert("Couldn't get location — check browser/phone settings")
     );
 }
 
-function startDrawing() { 
+function startDrawing() {
     if (!map) return alert("Load map first");
     clearEverything();
     isDrawing = true;
+    map.doubleClickZoom.disable();               // disable double-tap zoom while drawing
     document.getElementById('finish-btn').disabled = false;
     document.getElementById('undo-btn').style.display = 'inline-block';
     alert("Tap map to draw your path → Finish when done");
 }
 
-function undoLastPoint() { 
+function undoLastPoint() {
     if (!isDrawing || pathPoints.length === 0) return;
     pathPoints.pop();
     if (mainPath) mainPath.setLatLngs(pathPoints);
     if (pathPoints.length === 0) document.getElementById('undo-btn').style.display = 'none';
 }
 
-function finishDrawing() { 
+function finishDrawing() {
     if (pathPoints.length < 2) return alert("Need at least 2 points");
     isDrawing = false;
+    map.doubleClickZoom.enable();                // enable double-tap zoom while drawing
     document.getElementById('undo-btn').style.display = 'none';
     document.getElementById('finish-btn').disabled = true;
     document.getElementById('nav-btn').disabled = false;
@@ -188,18 +261,17 @@ function savePathToStorage() {
 function clearEverything() {
     if (mainPath) { mainPath.remove(); mainPath = null; }
     if (walkedPath) { walkedPath.remove(); walkedPath = null; }
-    if (userMarker) { userMarker.remove(); userMarker = null; }
-    if (accuracyCircle) { accuracyCircle.remove(); accuracyCircle = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
     pathPoints = [];
     totalDistance = 0;
-    if (watchId) { navigator.geolocation.clearWatch(watchId); watchId = null; }
+    isNavigating = false;
+    if (map) map.doubleClickZoom.enable();   // safety re-enable
     document.getElementById('path-info').style.display = 'none';
     document.getElementById('undo-btn').style.display = 'none';
     document.getElementById('recenter-btn').style.display = 'none';
 }
 
-function clearPath() { 
+function clearPath() {
     clearEverything();
     localStorage.removeItem('customPath');
     document.getElementById('draw-btn').disabled = false;
@@ -212,80 +284,15 @@ function startNavigation() {
     if (mainPath) mainPath.setStyle({ color: '#aaaaaa', weight: 4, opacity: 0.5 });
     walkedPath = L.polyline([], { color: '#00ff88', weight: 8, opacity: 1 }).addTo(map);
 
+    isNavigating = true;
     document.getElementById('stop-btn').style.display = 'inline-block';
     document.getElementById('nav-btn').disabled = true;
     document.getElementById('recenter-btn').style.display = 'inline-block';
-
-    watchId = navigator.geolocation.watchPosition(pos => {
-        const rawPos = L.latLng(pos.coords.latitude, pos.coords.longitude);   // REAL GPS
-        const proj = projectPosition(rawPos);                                 // for stats + trail
-
-        // === BLUE DOT = REAL POSITION ===
-        if (!userMarker) {
-            userMarker = L.circleMarker(rawPos, {
-                radius: 10,
-                color: '#0066ff',
-                fillColor: '#00aaff',
-                fillOpacity: 1,
-                weight: 3
-            }).addTo(map);
-        } else {
-            userMarker.setLatLng(rawPos);
-        }
-
-        // Accuracy circle on real position
-        if (!accuracyCircle) {
-            accuracyCircle = L.circle(rawPos, {
-                radius: pos.coords.accuracy || 30,
-                color: '#3388ff',
-                fillColor: '#3388ff',
-                fillOpacity: 0.15,
-                weight: 2
-            }).addTo(map);
-        } else {
-            accuracyCircle.setLatLng(rawPos).setRadius(pos.coords.accuracy || 30);
-        }
-
-        // Grow walked trail along the path (projection)
-        const walkedPts = pathPoints.slice(0, proj.index + 1);
-        walkedPts.push(proj.point);
-        walkedPath.setLatLngs(walkedPts);
-
-        const distToPath = rawPos.distanceTo(proj.point);
-        if (distToPath > OFF_PATH_THRESHOLD) {
-            if (!offPathLine) {
-                offPathLine = L.polyline([rawPos, proj.point], {
-                    color: '#ff8800',
-                    weight: 3,
-                    opacity: 0.75,
-                    dashArray: '8, 6'
-                }).addTo(map);
-            } else {
-                offPathLine.setLatLngs([rawPos, proj.point]);
-            }
-        } else if (offPathLine) {
-            offPathLine.remove();
-            offPathLine = null;
-        }
-
-        map.panTo(rawPos, { animate: true });   // center on real you
-
-        updateInfo(proj.traveled, pos.coords.speed, pos.coords.accuracy, distToPath);
-
-        // Auto-arrival
-        if (proj.traveled / totalDistance > 0.97) {
-            alert("🎉 You've reached the end!");
-            stopNavigation();
-        }
-    }, err => {
-        if (err.code === 1) console.log("Permission denied (normal in dev tools)");
-        else console.error(err);
-    }, { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 });
 }
 
 function stopNavigation() {
-    if (watchId) navigator.geolocation.clearWatch(watchId);
-    watchId = null;
+    isNavigating = false;
+    if (walkedPath) { walkedPath.remove(); walkedPath = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
     document.getElementById('stop-btn').style.display = 'none';
     document.getElementById('recenter-btn').style.display = 'none';
@@ -297,4 +304,3 @@ function recenterMap() {
 }
 
 window.onload = () => setTimeout(() => { if (!map) initializeApp(); }, 200);
-
