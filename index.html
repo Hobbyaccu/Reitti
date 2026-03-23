@@ -15,14 +15,12 @@
         </div>
 
         <div class="button-grid">
-            <button onclick="initializeApp()" id="init-btn">🗺️ Load Map</button>
             <button onclick="startDrawing()" id="draw-btn" disabled>✏️ Start Drawing</button>
             <button onclick="undoLastPoint()" id="undo-btn" style="display:none;">↩️ Undo</button>
             <button onclick="finishDrawing()" id="finish-btn" disabled>✅ Finish Path</button>
             <button onclick="clearPath()" id="clear-btn" disabled>🗑️ Clear All</button>
             <button onclick="loadSavedPath()" id="load-btn" disabled>📂 Load Saved</button>
             <button onclick="startNavigation()" id="nav-btn" disabled>🧭 Start Navigation</button>
-            <button onclick="recenterMap()" id="recenter-btn" style="display:none;">🔄 Recenter</button>
             <button onclick="stopNavigation()" id="stop-btn" style="display:none;">⏹️ Stop</button>
         </div>
     </div>
@@ -30,13 +28,12 @@
     <div id="map-wrapper">
         <div id="map"></div>
 
-        <!-- Floating modern info card -->
+        <!-- Floating info card -->
         <div id="path-info" class="info-card"></div>
 
-        <!-- Drawing instruction overlay -->
+        <!-- Small pill instruction (auto-hides after 5s) -->
         <div id="drawing-overlay" class="overlay">
-            Tap anywhere on the map to add points<br>
-            <small>Finish when your route is ready</small>
+            ✏️ Tap the map to add points
         </div>
     </div>
 
