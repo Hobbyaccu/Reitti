@@ -15,7 +15,7 @@ let maxReachedIndex = 0;
 const WALK_SPEED = 5;
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
-const ARRIVAL_THRESHOLD = 0.95; // 95% of path traveled, edge cases.
+const ARRIVAL_THRESHOLD = 0.95;
 
 function calculateDistance(pts) {
     let d = 0;
@@ -89,19 +89,28 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
     const accM = accuracy ? accuracy.toFixed(0) : "—";
     const checkpoints = pathPoints.length > 0 ? Math.min(maxReachedIndex + 1, pathPoints.length) : 0;
 
-    let extra = '';
+    let html = `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.5rem;margin-bottom:0.6rem;">
+            <div><strong>🚶 Walked:</strong> ${walkedKm} km</div>
+            <div><strong>🏁 Remaining:</strong> ${remKm} km</div>
+            <div><strong>📊 Progress:</strong> ${percent}%</div>
+            <div><strong>🏁 Checkpoints:</strong> ${checkpoints} / ${pathPoints.length}</div>
+        </div>
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;">
+            <div><strong>⚡ Speed:</strong> ${speedKmh} km/h</div>
+            <div><strong>📏 Accuracy:</strong> ±${accM} m</div>
+        </div>
+    `;
+
     if (offPathDist > OFF_PATH_THRESHOLD) {
-        extra = `<br><strong style="color:#ff8800;">Off path (+${offPathDist.toFixed(0)} m)</strong>`;
+        html += `
+            <div style="margin-top:0.8rem;padding:0.6rem 1rem;background:#fff3e0;border-radius:10px;border-left:5px solid #ff8800;">
+                <strong style="color:#ff8800;">⚠️ Off path (+${offPathDist.toFixed(0)} m)</strong>
+            </div>
+        `;
     }
 
-    document.getElementById('path-info').innerHTML = `
-        <strong>Walked:</strong> ${walkedKm} km 
-        <strong>Remaining:</strong> ${remKm} km<br>
-        <strong>Progress:</strong> ${percent}% 
-        <strong>Checkpoints:</strong> ${checkpoints} / ${pathPoints.length} 
-        <strong>Speed:</strong> ${speedKmh} km/h 
-        <strong>Accuracy:</strong> ±${accM} m${extra}
-    `;
+    document.getElementById('path-info').innerHTML = html;
     document.getElementById('path-info').style.display = 'block';
 }
 
@@ -118,8 +127,6 @@ function startPermanentLocationWatch() {
 
             if (isNavigating) {
                 const proj = projectPosition(rawPos);
-
-                // Update farthest point reached (the real point tracker)
                 if (proj.index > maxReachedIndex) maxReachedIndex = proj.index;
 
                 if (walkedPath) {
@@ -152,7 +159,7 @@ function startPermanentLocationWatch() {
 
 function initializeApp() {
     if (map) return;
-    map = L.map('map').setView([60.20911396893135, 24.955160312780436], 13);
+    map = L.map('map', { zoomControl: true }).setView([60.20911396893135, 24.955160312780436], 13);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
@@ -178,9 +185,6 @@ function initializeApp() {
     document.getElementById('draw-btn').disabled = false;
     document.getElementById('init-btn').disabled = true;
     document.getElementById('findme-btn').style.display = 'inline-block';
-
-    const saved = localStorage.getItem('customPath');
-    if (saved) document.getElementById('load-btn').disabled = false;
 }
 
 function findMe() {
@@ -200,10 +204,10 @@ function startDrawing() {
     if (!map) return alert("Load map first");
     clearEverything();
     isDrawing = true;
-    map.doubleClickZoom.disable();               // disable double-tap zoom while drawing
+    map.doubleClickZoom.disable();
     document.getElementById('finish-btn').disabled = false;
     document.getElementById('undo-btn').style.display = 'inline-block';
-    alert("Tap map to draw your path → Finish when done");
+    document.getElementById('drawing-overlay').style.display = 'block';
 }
 
 function undoLastPoint() {
@@ -216,7 +220,6 @@ function undoLastPoint() {
 function finishDrawing() {
     if (pathPoints.length < 2) return alert("Need at least 2 points");
 
-    // Closed-loop auto-snap
     if (pathPoints.length >= 3) {
         const distToStart = pathPoints[0].distanceTo(pathPoints[pathPoints.length - 1]);
         if (distToStart < LOOP_SNAP_THRESHOLD) {
@@ -232,6 +235,7 @@ function finishDrawing() {
     document.getElementById('nav-btn').disabled = false;
     document.getElementById('clear-btn').disabled = false;
     document.getElementById('load-btn').disabled = true;
+    document.getElementById('drawing-overlay').style.display = 'none';
 
     totalDistance = calculateDistance(pathPoints);
     savePathToStorage();
@@ -271,6 +275,7 @@ function clearEverything() {
     document.getElementById('path-info').style.display = 'none';
     document.getElementById('undo-btn').style.display = 'none';
     document.getElementById('recenter-btn').style.display = 'none';
+    document.getElementById('drawing-overlay').style.display = 'none';
 }
 
 function clearPath() {
