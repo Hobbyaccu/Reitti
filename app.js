@@ -12,7 +12,6 @@ let locationWatchId = null;
 let totalDistance = 0;
 let maxReachedIndex = 0;
 
-const WALK_SPEED = 5;
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
 const ARRIVAL_THRESHOLD = 0.95;
@@ -103,11 +102,7 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
     `;
 
     if (offPathDist > OFF_PATH_THRESHOLD) {
-        html += `
-            <div style="margin-top:0.8rem;padding:0.6rem 1rem;background:#fff3e0;border-radius:10px;border-left:5px solid #ff8800;">
-                <strong style="color:#ff8800;">⚠️ Off path (+${offPathDist.toFixed(0)} m)</strong>
-            </div>
-        `;
+        html += `<div style="margin-top:0.8rem;padding:0.6rem 1rem;background:#fff3e0;border-radius:10px;border-left:5px solid #ff8800;"><strong style="color:#ff8800;">⚠️ Off path (+${offPathDist.toFixed(0)} m)</strong></div>`;
     }
 
     document.getElementById('path-info').innerHTML = html;
@@ -116,7 +111,6 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
 
 function startPermanentLocationWatch() {
     if (locationWatchId) return;
-
     locationWatchId = navigator.geolocation.watchPosition(
         (pos) => {
             const rawPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
@@ -144,9 +138,7 @@ function startPermanentLocationWatch() {
                 map.panTo(rawPos, { animate: true });
                 updateInfo(proj.traveled, pos.coords.speed, acc, distToPath);
 
-                if (totalDistance > 0 &&
-                    proj.traveled / totalDistance > ARRIVAL_THRESHOLD &&
-                    maxReachedIndex >= pathPoints.length - 2) {
+                if (totalDistance > 0 && proj.traveled / totalDistance > ARRIVAL_THRESHOLD && maxReachedIndex >= pathPoints.length - 2) {
                     alert("🎉 You've reached the end! Great job!");
                     stopNavigation();
                 }
@@ -183,8 +175,6 @@ function initializeApp() {
     });
 
     document.getElementById('draw-btn').disabled = false;
-    document.getElementById('init-btn').disabled = true;
-    document.getElementById('findme-btn').style.display = 'inline-block';
 }
 
 function findMe() {
@@ -207,7 +197,11 @@ function startDrawing() {
     map.doubleClickZoom.disable();
     document.getElementById('finish-btn').disabled = false;
     document.getElementById('undo-btn').style.display = 'inline-block';
-    document.getElementById('drawing-overlay').style.display = 'block';
+    
+    // Show small top pill for 5 seconds
+    const overlay = document.getElementById('drawing-overlay');
+    overlay.style.display = 'block';
+    setTimeout(() => { overlay.style.display = 'none'; }, 5000);
 }
 
 function undoLastPoint() {
@@ -274,7 +268,6 @@ function clearEverything() {
     if (map) map.doubleClickZoom.enable();
     document.getElementById('path-info').style.display = 'none';
     document.getElementById('undo-btn').style.display = 'none';
-    document.getElementById('recenter-btn').style.display = 'none';
     document.getElementById('drawing-overlay').style.display = 'none';
 }
 
@@ -287,7 +280,6 @@ function clearPath() {
 
 function startNavigation() {
     if (pathPoints.length < 2) return alert("Draw a path first");
-
     if (mainPath) mainPath.setStyle({ color: '#aaaaaa', weight: 4, opacity: 0.5 });
     walkedPath = L.polyline([], { color: '#33ff00', weight: 8, opacity: 1 }).addTo(map);
 
@@ -295,7 +287,6 @@ function startNavigation() {
     isNavigating = true;
     document.getElementById('stop-btn').style.display = 'inline-block';
     document.getElementById('nav-btn').disabled = true;
-    document.getElementById('recenter-btn').style.display = 'inline-block';
 }
 
 function stopNavigation() {
@@ -303,12 +294,7 @@ function stopNavigation() {
     if (walkedPath) { walkedPath.remove(); walkedPath = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
     document.getElementById('stop-btn').style.display = 'none';
-    document.getElementById('recenter-btn').style.display = 'none';
     document.getElementById('nav-btn').disabled = false;
 }
 
-function recenterMap() {
-    if (userMarker) map.flyTo(userMarker.getLatLng(), map.getZoom());
-}
-
-window.onload = () => setTimeout(() => { if (!map) initializeApp(); }, 200);
+window.onload = () => setTimeout(() => { if (!map) initializeApp(); }, 150);
