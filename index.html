@@ -1,45 +1,46 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
     <title>QWIPQ</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Leaflet CSS (free CDN) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
-
 <body>
-    <div class="container">
-        <h1>Work In Progress</h1>
-
-        <div style="margin-bottom: 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;">
-            <button onclick="initializeApp()" id="init-btn">Load Map</button>
-            <button onclick="findMe()" id="findme-btn" style="background:#00cc66;">📍 Find Me</button>
-
-            <button onclick="startDrawing()" id="draw-btn" disabled>Start Drawing</button>
-            <button onclick="undoLastPoint()" id="undo-btn" style="display:none;">Undo Last</button>
-            <button onclick="finishDrawing()" id="finish-btn" disabled>Finish Path</button>
-            <button onclick="clearPath()" id="clear-btn" disabled>Clear</button>
-            <button onclick="loadSavedPath()" id="load-btn" disabled>Load Saved Path</button>
-
-            <button onclick="startNavigation()" id="nav-btn" disabled>Start Navigation</button>
-            <button onclick="recenterMap()" id="recenter-btn" style="display:none;">Recenter</button>
-            <button onclick="stopNavigation()" id="stop-btn" style="display:none;">Stop</button>
+    <div id="top-panel">
+        <div class="header-row">
+            <h1>QWIPQ</h1>
+            <button onclick="findMe()" id="findme-btn" class="btn-icon">📍</button>
         </div>
 
-        <div id="path-info"
-            style="display:none; background:#969696; padding:1rem; border-radius:8px; font-size:0.95rem; margin-bottom:1rem;">
-            <!-- Filled by JS -->
+        <div class="button-grid">
+            <button onclick="initializeApp()" id="init-btn">🗺️ Load Map</button>
+            <button onclick="startDrawing()" id="draw-btn" disabled>✏️ Start Drawing</button>
+            <button onclick="undoLastPoint()" id="undo-btn" style="display:none;">↩️ Undo</button>
+            <button onclick="finishDrawing()" id="finish-btn" disabled>✅ Finish Path</button>
+            <button onclick="clearPath()" id="clear-btn" disabled>🗑️ Clear All</button>
+            <button onclick="loadSavedPath()" id="load-btn" disabled>📂 Load Saved</button>
+            <button onclick="startNavigation()" id="nav-btn" disabled>🧭 Start Navigation</button>
+            <button onclick="recenterMap()" id="recenter-btn" style="display:none;">🔄 Recenter</button>
+            <button onclick="stopNavigation()" id="stop-btn" style="display:none;">⏹️ Stop</button>
         </div>
-
-        <div id="map" style="margin-top: 1.5rem;"></div>
     </div>
 
-    <!-- Leaflet JS (free CDN) – load before your app.js -->
+    <div id="map-wrapper">
+        <div id="map"></div>
+
+        <!-- Floating modern info card -->
+        <div id="path-info" class="info-card"></div>
+
+        <!-- Drawing instruction overlay -->
+        <div id="drawing-overlay" class="overlay">
+            Tap anywhere on the map to add points<br>
+            <small>Finish when your route is ready</small>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="app.js"></script>
 </body>
-
 </html>
