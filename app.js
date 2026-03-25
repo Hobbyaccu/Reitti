@@ -11,7 +11,6 @@ let isNavigating = false;
 let locationWatchId = null;
 let totalDistance = 0;
 let maxReachedIndex = 0;
-let versR = 555;
 
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
@@ -170,6 +169,16 @@ function startPermanentLocationWatch() {
     );
 }
 
+async function enterFullscreen() {
+  try {
+    await document.documentElement.requestFullscreen({
+      navigationUI: 'hide'   // hides the browser navigation UI where supported
+    });
+  } catch (err) {
+    console.log("Fullscreen failed:", err);
+  }
+}
+
 function initializeApp() {
     if (map) return;
     map = L.map('map', { zoomControl: false }).setView([60.20911396893135, 24.955160312780436], 13);
@@ -186,6 +195,8 @@ function initializeApp() {
         (pos) => map.flyTo(L.latLng(pos.coords.latitude, pos.coords.longitude), 15, { duration: 1.5 }),
         () => {}
     );
+
+    enterFullscreen();
 
     map.on('click', e => {
         if (!isDrawing) return;
