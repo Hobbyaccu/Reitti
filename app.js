@@ -15,6 +15,7 @@ let isEditing = false;
 let currentWaypointIndex = 1; 
 let wakeLock = null;
 let hasAnnouncedTurn = false;
+let editUndoStack = [];
 
 // silent audio.. idk?
 const silentWavData = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
@@ -194,10 +195,21 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
 }
 
 // --- CORE LOGIC ---
+function saveEditState() {
+    editUndoStack.push(JSON.parse(JSON.stringify(pathPoints.map(p => [p.lat, p.lng]))));
+    
+    // Optional: limit stack size to prevent memory issues
+    if (editUndoStack.length > 20) {
+        editUndoStack.shift();
+    }
+}
+
 function refreshEditMarkers() {
     // Clear old markers
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
+
+    saveEditState();
 
     for (let i = 0; i < pathPoints.length; i++) {
         const marker = L.marker(pathPoints[i], {
@@ -210,21 +222,19 @@ function refreshEditMarkers() {
             })
         }).addTo(map);
 
-        // LIVE update while dragging
         marker.on('drag', (e) => {
             pathPoints[i] = e.target.getLatLng();
-            mainPath.setLatLngs(pathPoints);        // live line update
+            mainPath.setLatLngs(pathPoints);
         });
 
-        // Rebuild midpoints after releasing (because indices may shift)
         marker.on('dragend', () => {
-            refreshEditMarkers();
+            refreshEditMarkers();   // This will save the new state
         });
 
         editMarkers.push(marker);
     }
 
-    // 2. Midpoint markers (for adding new points) - with LIVE preview
+    // Midpoint markers
     for (let i = 0; i < pathPoints.length - 1; i++) {
         const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
         const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
@@ -244,26 +254,41 @@ function refreshEditMarkers() {
         midMarker.on('drag', (e) => {
             const tempPoints = [...pathPoints];
             tempPoints.splice(tempPointIndex, 0, e.target.getLatLng());
-            mainPath.setLatLngs(tempPoints);              // show live preview
+            mainPath.setLatLngs(tempPoints);
         });
 
         midMarker.on('dragend', (e) => {
-            // Actually commit the new point
             pathPoints.splice(tempPointIndex, 0, e.target.getLatLng());
             mainPath.setLatLngs(pathPoints);
-            refreshEditMarkers();                         // rebuild all markers
+            refreshEditMarkers();   // Saves new state
         });
 
         editMarkers.push(midMarker);
     }
 }
+
+function undoEdit() {
+    if (editUndoStack.length <= 1) return;   // Keep at least the initial state
+
+    editUndoStack.pop();
+
+    // Restore previous state
+    const previousState = editUndoStack[editUndoStack.length - 1];
+    pathPoints = previousState.map(c => L.latLng(c[0], c[1]));
+
+    mainPath.setLatLngs(pathPoints);
+    totalDistance = calculateDistance(pathPoints);
+
+    refreshEditMarkers();   // Rebuild markers + save current (restored) state again
+}
+
 function enterEditMode() {
     isEditing = true;
     isDrawing = false;
     map.doubleClickZoom.disable();
 
     if (mainPath) mainPath.setStyle({ color: '#007aff', weight: 6, opacity: 0.85 });
-
+    editUndoStack = [];
     refreshEditMarkers();
     setUIState('editing');
 }
@@ -272,6 +297,7 @@ function finishEditing() {
     isEditing = false;
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
+    editUndoStack = [];
     map.doubleClickZoom.enable();
 
     totalDistance = calculateDistance(pathPoints);
@@ -283,6 +309,7 @@ function cancelEditing() {
     isEditing = false;
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
+    editUndoStack = [];
     map.doubleClickZoom.enable();
     setUIState('ready');
 }
