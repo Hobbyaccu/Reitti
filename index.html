@@ -2,39 +2,52 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <title>QWIPQ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>QWIPQ Navigation</title>
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 <body>
-    <div id="top-panel">
-        <div class="header-row">
-            <h1>QWIPQ</h1>
-            <button onclick="findMe()" id="findme-btn" class="btn-icon">📍</button>
+    <header id="floating-header">
+        <h1>QWIPQ</h1>
+        <button onclick="findMe()" id="findme-btn" class="icon-btn" aria-label="Find Me">📍</button>
+    </header>
+
+    <div id="map"></div>
+
+    <div id="bottom-panel">
+        
+        <div id="state-idle" class="state-view active">
+            <button onclick="startDrawing()" class="btn primary-btn">✏️ Draw New Path</button>
+            <button onclick="loadSavedPath()" id="load-btn" class="btn secondary-btn" style="display: none;">📂 Load Saved Path</button>
         </div>
 
-        <div class="button-grid">
-            <button onclick="startDrawing()" id="draw-btn" disabled>✏️ Start Drawing</button>
-            <button onclick="undoLastPoint()" id="undo-btn" style="display:none;">↩️ Undo</button>
-            <button onclick="finishDrawing()" id="finish-btn" disabled>✅ Finish Path</button>
-            <button onclick="clearPath()" id="clear-btn" disabled>🗑️ Clear All</button>
-            <button onclick="loadSavedPath()" id="load-btn" disabled>📂 Load Saved</button>
-            <button onclick="startNavigation()" id="nav-btn" disabled>🧭 Start Navigation</button>
-            <button onclick="stopNavigation()" id="stop-btn" style="display:none;">⏹️ Stop</button>
+        <div id="state-drawing" class="state-view">
+            <div class="pill-instruction">Tap the map to add points</div>
+            <div class="btn-row">
+                <button onclick="clearEverything()" class="btn danger-icon-btn">✖️</button>
+                <button onclick="undoLastPoint()" id="undo-btn" class="btn secondary-btn" disabled>↩️ Undo</button>
+                <button onclick="finishDrawing()" id="finish-btn" class="btn primary-btn" disabled>✅ Finish</button>
+            </div>
         </div>
-    </div>
 
-    <div id="map-wrapper">
-        <div id="map"></div>
-
-        <!-- Floating info card -->
-        <div id="path-info" class="info-card"></div>
-
-        <!-- Small pill instruction (auto-hides after 5s) -->
-        <div id="drawing-overlay" class="overlay">
-            ✏️ Tap the map to add points
+        <div id="state-ready" class="state-view">
+            <div class="route-summary">
+                <span class="route-badge">📍 Route Ready</span>
+                <span id="route-distance" class="route-dist">0.00 km</span>
+            </div>
+            <div class="btn-row">
+                <button onclick="clearPath()" class="btn secondary-btn">🗑️ Clear</button>
+                <button onclick="startNavigation()" class="btn nav-btn">🧭 Start Navigating</button>
+            </div>
         </div>
+
+        <div id="state-navigating" class="state-view">
+            <div id="path-info-content" class="nav-dashboard">
+                </div>
+            <button onclick="stopNavigation()" class="btn danger-btn">⏹️ Stop Navigation</button>
+        </div>
+
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
