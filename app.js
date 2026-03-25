@@ -277,9 +277,6 @@ function refreshEditMarkers() {
 
 function undoEdit() {
     if (editUndoStack.length <= 1) {
-        // Disable button visually when nothing left to undo
-        const undoBtn = document.getElementById('edit-undo-btn');
-        if (undoBtn) undoBtn.disabled = true;
         return;
     }
     editUndoStack.pop();
@@ -293,10 +290,6 @@ function undoEdit() {
     totalDistance = calculateDistance(pathPoints);
 
     refreshEditMarkers();   // Rebuild markers
-
-    // Re-enable undo button if we still have history
-    const undoBtn = document.getElementById('edit-undo-btn');
-    if (undoBtn) undoBtn.disabled = editUndoStack.length <= 1;
 }
 
 function enterEditMode() {
@@ -311,10 +304,6 @@ function enterEditMode() {
     refreshEditMarkers();
 
     setUIState('editing');
-
-    // Make sure undo button starts disabled (nothing to undo yet)
-    const undoBtn = document.getElementById('edit-undo-btn');
-    if (undoBtn) undoBtn.disabled = false;
 }
 
 function finishEditing() {
