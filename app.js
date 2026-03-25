@@ -196,11 +196,18 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
 
 // --- CORE LOGIC ---
 function saveEditState() {
-    editUndoStack.push(JSON.parse(JSON.stringify(pathPoints.map(p => [p.lat, p.lng]))));
+    // Only save if the path actually changed (avoid duplicates)
+    const currentSerialized = JSON.stringify(pathPoints.map(p => [p.lat, p.lng]));
     
-    // Optional: limit stack size to prevent memory issues
-    if (editUndoStack.length > 20) {
-        editUndoStack.shift();
+    if (editUndoStack.length === 0 || 
+        editUndoStack[editUndoStack.length - 1] !== currentSerialized) {
+        
+        editUndoStack.push(currentSerialized);
+        
+        // Limit stack size
+        if (editUndoStack.length > 30) {
+            editUndoStack.shift();
+        }
     }
 }
 
@@ -209,8 +216,7 @@ function refreshEditMarkers() {
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
 
-    saveEditState();
-
+    // Rebuild endpoint markers
     for (let i = 0; i < pathPoints.length; i++) {
         const marker = L.marker(pathPoints[i], {
             draggable: true,
@@ -224,17 +230,18 @@ function refreshEditMarkers() {
 
         marker.on('drag', (e) => {
             pathPoints[i] = e.target.getLatLng();
-            mainPath.setLatLngs(pathPoints);
+            if (mainPath) mainPath.setLatLngs(pathPoints);
         });
 
         marker.on('dragend', () => {
-            refreshEditMarkers();   // This will save the new state
+            saveEditState();           // Save only after drag ends
+            refreshEditMarkers();      // Rebuild markers (without saving again immediately)
         });
 
         editMarkers.push(marker);
     }
 
-    // Midpoint markers
+    // Rebuild midpoint markers
     for (let i = 0; i < pathPoints.length - 1; i++) {
         const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
         const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
@@ -254,13 +261,14 @@ function refreshEditMarkers() {
         midMarker.on('drag', (e) => {
             const tempPoints = [...pathPoints];
             tempPoints.splice(tempPointIndex, 0, e.target.getLatLng());
-            mainPath.setLatLngs(tempPoints);
+            if (mainPath) mainPath.setLatLngs(tempPoints);
         });
 
         midMarker.on('dragend', (e) => {
             pathPoints.splice(tempPointIndex, 0, e.target.getLatLng());
-            mainPath.setLatLngs(pathPoints);
-            refreshEditMarkers();   // Saves new state
+            if (mainPath) mainPath.setLatLngs(pathPoints);
+            saveEditState();           // Save only after successful add
+            refreshEditMarkers();
         });
 
         editMarkers.push(midMarker);
@@ -268,18 +276,27 @@ function refreshEditMarkers() {
 }
 
 function undoEdit() {
-    if (editUndoStack.length <= 1) return;   // Keep at least the initial state
-
+    if (editUndoStack.length <= 1) {
+        // Disable button visually when nothing left to undo
+        const undoBtn = document.getElementById('edit-undo-btn');
+        if (undoBtn) undoBtn.disabled = true;
+        return;
+    }
     editUndoStack.pop();
 
-    // Restore previous state
-    const previousState = editUndoStack[editUndoStack.length - 1];
-    pathPoints = previousState.map(c => L.latLng(c[0], c[1]));
+    const previousSerialized = editUndoStack[editUndoStack.length - 1];
+    const previousCoords = JSON.parse(previousSerialized);
+    
+    pathPoints = previousCoords.map(c => L.latLng(c[0], c[1]));
 
-    mainPath.setLatLngs(pathPoints);
+    if (mainPath) mainPath.setLatLngs(pathPoints);
     totalDistance = calculateDistance(pathPoints);
 
-    refreshEditMarkers();   // Rebuild markers + save current (restored) state again
+    refreshEditMarkers();   // Rebuild markers
+
+    // Re-enable undo button if we still have history
+    const undoBtn = document.getElementById('edit-undo-btn');
+    if (undoBtn) undoBtn.disabled = editUndoStack.length <= 1;
 }
 
 function enterEditMode() {
@@ -288,9 +305,16 @@ function enterEditMode() {
     map.doubleClickZoom.disable();
 
     if (mainPath) mainPath.setStyle({ color: '#007aff', weight: 6, opacity: 0.85 });
+
     editUndoStack = [];
+    saveEditState();
     refreshEditMarkers();
+
     setUIState('editing');
+
+    // Make sure undo button starts disabled (nothing to undo yet)
+    const undoBtn = document.getElementById('edit-undo-btn');
+    if (undoBtn) undoBtn.disabled = true;
 }
 
 function finishEditing() {
