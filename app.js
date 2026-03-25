@@ -9,14 +9,15 @@ let isDrawing = false;
 let isNavigating = false;
 let locationWatchId = null;
 let totalDistance = 0;
-let maxReachedIndex = 0;
-let maxTraveled = 0;
 let hasEnteredFullscreen = false;
-let vres = 5;
 
+// Navigation State
+let currentWaypointIndex = 1; 
+
+// Config Thresholds
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
-const ARRIVAL_THRESHOLD = 0.95;
+const WAYPOINT_REACHED_THRESHOLD = 30; // Must get within 30m of the next point to progress
 
 // --- UI STATE MANAGER ---
 function setUIState(state) {
@@ -38,53 +39,20 @@ function calculateDistance(pts) {
     return d;
 }
 
+// Fixed to account for high-latitude scaling (crucial for accurate line projections)
 function closestPointOnSegment(p, a, b) {
-    const dx = b.lng - a.lng;
+    const scale = Math.cos(a.lat * Math.PI / 180); 
+    const dx = (b.lng - a.lng) * scale;
     const dy = b.lat - a.lat;
     const len2 = dx * dx + dy * dy;
+    
     if (len2 === 0) return { point: a, t: 0 };
-    let t = ((p.lng - a.lng) * dx + (p.lat - a.lat) * dy) / len2;
+    
+    let t = (((p.lng - a.lng) * scale) * dx + (p.lat - a.lat) * dy) / len2;
     t = Math.max(0, Math.min(1, t));
-    return { point: L.latLng(a.lat + t * dy, a.lng + t * dx), t };
-}
-
-function projectPosition(currentPos) {
-    if (pathPoints.length < 2) return { point: currentPos, traveled: 0, index: 0 };
-
-    let minDist = Infinity;
-    for (let i = 0; i < pathPoints.length - 1; i++) {
-        const res = closestPointOnSegment(currentPos, pathPoints[i], pathPoints[i + 1]);
-        const dist = currentPos.distanceTo(res.point);
-        if (dist < minDist) minDist = dist;
-    }
-
-    const TOL = 5;
-    let bestTraveled = Infinity;
-    let bestPoint = null;
-    let bestIndex = 0;
-    let bestT = 0;
-
-    for (let i = 0; i < pathPoints.length - 1; i++) {
-        const res = closestPointOnSegment(currentPos, pathPoints[i], pathPoints[i + 1]);
-        const dist = currentPos.distanceTo(res.point);
-
-        if (dist > minDist + TOL) continue; // not competitive
-
-        let thisTraveled = 0;
-        for (let j = 0; j < i; j++) {
-            thisTraveled += pathPoints[j].distanceTo(pathPoints[j + 1]);
-        }
-        thisTraveled += res.t * pathPoints[i].distanceTo(pathPoints[i + 1]);
-
-        if (thisTraveled < bestTraveled) {
-            bestTraveled = thisTraveled;
-            bestPoint = res.point;
-            bestIndex = i;
-            bestT = res.t;
-        }
-    }
-
-    return { point: bestPoint, traveled: bestTraveled, index: bestIndex };
+    
+    // Reverse scale for the actual mapping coordinate
+    return { point: L.latLng(a.lat + t * dy, a.lng + (t * dx) / scale), t };
 }
 
 // --- MAP UPDATES ---
@@ -172,31 +140,55 @@ function startPermanentLocationWatch() {
             updateHeading(rawPos, pos.coords.heading);
 
             if (isNavigating) {
-                const proj = projectPosition(rawPos);
-                if (totalDistance > 0 && maxTraveled / totalDistance > ARRIVAL_THRESHOLD) {
-                    alert("🎉 You've reached the end! Great job!");
-                    stopNavigation();
+                // 1. WAYPOINT PROGRESSION CHECK
+                // Using a while-loop just in case they are moving fast and skip multiple tight points
+                while (currentWaypointIndex < pathPoints.length && rawPos.distanceTo(pathPoints[currentWaypointIndex]) < WAYPOINT_REACHED_THRESHOLD) {
+                    currentWaypointIndex++;
                 }
 
-                if (walkedPath) {
-                    const walkedPts = pathPoints.slice(0, proj.index + 1);
-                    walkedPts.push(proj.point);
-                    walkedPath.setLatLngs(walkedPts);
+                // 2. COMPLETION CHECK
+                if (currentWaypointIndex >= pathPoints.length) {
+                    updateInfo(totalDistance, pos.coords.speed, acc, 0);
+                    walkedPath.setLatLngs(pathPoints);
+                    if (offPathLine) { offPathLine.remove(); offPathLine = null; }
+                    
+                    // Small timeout to allow UI to render the final line before the alert blocks the thread
+                    setTimeout(() => {
+                        alert("🎉 You've reached the end! Great job!");
+                        stopNavigation();
+                    }, 100);
+                    return; 
                 }
 
-                const distToPath = rawPos.distanceTo(proj.point);
+                // 3. PROJECT ONTO ACTIVE SEGMENT ONLY
+                const targetPt = pathPoints[currentWaypointIndex];
+                const prevPt = pathPoints[currentWaypointIndex - 1];
+                const projection = closestPointOnSegment(rawPos, prevPt, targetPt);
+                const projPt = projection.point;
+                const distToPath = rawPos.distanceTo(projPt);
+
+                // 4. CALCULATE TRAVELED DISTANCE
+                let traveledSoFar = 0;
+                for (let i = 0; i < currentWaypointIndex - 1; i++) {
+                    traveledSoFar += pathPoints[i].distanceTo(pathPoints[i + 1]);
+                }
+                traveledSoFar += prevPt.distanceTo(projPt);
+
+                // 5. UPDATE MAP VISUALS
+                const walkedPts = pathPoints.slice(0, currentWaypointIndex);
+                walkedPts.push(projPt);
+                walkedPath.setLatLngs(walkedPts);
+
                 if (distToPath > OFF_PATH_THRESHOLD) {
-                    if (!offPathLine) offPathLine = L.polyline([rawPos, proj.point], { color: '#ff3b30', weight: 3, opacity: 0.8, dashArray: '6, 6' }).addTo(map);
-                    else offPathLine.setLatLngs([rawPos, proj.point]);
-                } else if (offPathLine) { offPathLine.remove(); offPathLine = null; }
+                    if (!offPathLine) offPathLine = L.polyline([rawPos, projPt], { color: '#ff3b30', weight: 3, opacity: 0.8, dashArray: '6, 6' }).addTo(map);
+                    else offPathLine.setLatLngs([rawPos, projPt]);
+                } else if (offPathLine) { 
+                    offPathLine.remove(); 
+                    offPathLine = null; 
+                }
 
                 map.panTo(rawPos, { animate: true });
-                updateInfo(proj.traveled, pos.coords.speed, acc, distToPath);
-
-                if (totalDistance > 0 && proj.traveled / totalDistance > ARRIVAL_THRESHOLD && maxReachedIndex >= pathPoints.length - 2) {
-                    alert("🎉 You've reached the end! Great job!");
-                    stopNavigation();
-                }
+                updateInfo(traveledSoFar, pos.coords.speed, acc, distToPath);
             }
         },
         (err) => { if (err.code !== 1) console.error(err); },
@@ -208,9 +200,7 @@ async function enterFullscreen() {
     if (hasEnteredFullscreen || !document.fullscreenEnabled) return;
 
     try {
-        await document.documentElement.requestFullscreen({
-            navigationUI: 'hide'
-        });
+        await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
         hasEnteredFullscreen = true;
         console.log("✅ Entered fullscreen mode");
     } catch (err) {
@@ -245,11 +235,10 @@ function initializeApp() {
         if (pathPoints.length >= 2) document.getElementById('finish-btn').disabled = false;
     });
 
-    setUIState('idle'); // Initialize UI
+    setUIState('idle');
 
     const handleFirstInteraction = () => {
         enterFullscreen();
-        // Remove listeners so it only happens once
         document.removeEventListener('touchstart', handleFirstInteraction, { once: true });
         document.removeEventListener('click', handleFirstInteraction, { once: true });
     };
@@ -292,7 +281,6 @@ function undoLastPoint() {
 function finishDrawing() {
     if (pathPoints.length < 2) return;
 
-    // Loop snapping
     if (pathPoints.length >= 3) {
         const distToStart = pathPoints[0].distanceTo(pathPoints[pathPoints.length - 1]);
         if (distToStart < LOOP_SNAP_THRESHOLD) {
@@ -333,8 +321,7 @@ function clearEverything() {
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
     pathPoints = [];
     totalDistance = 0;
-    maxReachedIndex = 0;
-    maxTraveled = 0;
+    currentWaypointIndex = 1;
     isDrawing = false;
     isNavigating = false;
     if (map) map.doubleClickZoom.enable();
@@ -349,9 +336,11 @@ function clearPath() {
 function startNavigation() {
     if (pathPoints.length < 2) return;
     if (mainPath) mainPath.setStyle({ color: '#8e8e93', weight: 5, opacity: 0.6 });
-    walkedPath = L.polyline([], { color: '#34c759', weight: 8, opacity: 1 }).addTo(map);
+    
+    // Start drawing walked path from the very first point
+    walkedPath = L.polyline([pathPoints[0]], { color: '#34c759', weight: 8, opacity: 1 }).addTo(map);
 
-    maxTraveled = 0;
+    currentWaypointIndex = 1; // Reset target to the first drawn line segment
     isNavigating = true;
     updateInfo(0, 0, 0, 0);
     setUIState('navigating');
@@ -361,7 +350,7 @@ function stopNavigation() {
     isNavigating = false;
     if (walkedPath) { walkedPath.remove(); walkedPath = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
-    if (mainPath) mainPath.setStyle({ color: '#007aff', weight: 6, opacity: 0.85 }); // Restore color
+    if (mainPath) mainPath.setStyle({ color: '#007aff', weight: 6, opacity: 0.85 }); 
     setUIState('ready');
 }
 
