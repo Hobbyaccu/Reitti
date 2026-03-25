@@ -199,7 +199,6 @@ function refreshEditMarkers() {
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
 
-    // 1. Create draggable markers for EVERY existing point
     for (let i = 0; i < pathPoints.length; i++) {
         const marker = L.marker(pathPoints[i], {
             draggable: true,
@@ -211,20 +210,21 @@ function refreshEditMarkers() {
             })
         }).addTo(map);
 
+        // LIVE update while dragging
         marker.on('drag', (e) => {
-            pathPoints[i] = e.target.getLatLng();           // live update
-            mainPath.setLatLngs(pathPoints);                // live line
+            pathPoints[i] = e.target.getLatLng();
+            mainPath.setLatLngs(pathPoints);        // live line update
         });
 
+        // Rebuild midpoints after releasing (because indices may shift)
         marker.on('dragend', () => {
-            mainPath.setLatLngs(pathPoints);
-            refreshEditMarkers();   // rebuild mids after move
+            refreshEditMarkers();
         });
 
         editMarkers.push(marker);
     }
 
-    // 2. Create midpoint markers (for adding new points)
+    // 2. Midpoint markers (for adding new points) - with LIVE preview
     for (let i = 0; i < pathPoints.length - 1; i++) {
         const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
         const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
@@ -239,15 +239,19 @@ function refreshEditMarkers() {
             })
         }).addTo(map);
 
+        let tempPointIndex = i + 1;
+
         midMarker.on('drag', (e) => {
-            // placeholder for now..
+            const tempPoints = [...pathPoints];
+            tempPoints.splice(tempPointIndex, 0, e.target.getLatLng());
+            mainPath.setLatLngs(tempPoints);              // show live preview
         });
 
         midMarker.on('dragend', (e) => {
-            const newPos = e.target.getLatLng();
-            pathPoints.splice(i + 1, 0, newPos);
+            // Actually commit the new point
+            pathPoints.splice(tempPointIndex, 0, e.target.getLatLng());
             mainPath.setLatLngs(pathPoints);
-            refreshEditMarkers();
+            refreshEditMarkers();                         // rebuild all markers
         });
 
         editMarkers.push(midMarker);
