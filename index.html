@@ -1,14 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link rel="manifest" href="manifest.json?v=513">
+    <link rel="manifest" href="manifest.json?v=20265585">
     <title>WIP Nav</title>
-    <link rel="stylesheet" href="style.css?v=513">
+    <link rel="stylesheet" href="style.css?v=20265585">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
+
 <body>
     <header id="floating-header">
         <h1>Nav</h1>
@@ -18,10 +20,11 @@
     <div id="map"></div>
 
     <div id="bottom-panel">
-        
+
         <div id="state-idle" class="state-view active">
             <button onclick="startDrawing()" class="btn primary-btn">✏️ Draw New Path</button>
-            <button onclick="loadSavedPath()" id="load-btn" class="btn secondary-btn" style="display: none;">📂 Load Saved Path</button>
+            <button onclick="loadSavedPath()" id="load-btn" class="btn secondary-btn" style="display: none;">📂 Load
+                Saved Path</button>
         </div>
 
         <div id="state-drawing" class="state-view">
@@ -44,15 +47,24 @@
             </div>
         </div>
 
+        <div id="state-editing" class="state-view">
+            <div class="pill-instruction">Drag the blue dots to add points</div>
+            <div class="btn-row">
+                <button onclick="cancelEditing()" class="btn secondary-btn">Cancel</button>
+                <button onclick="finishEditing()" class="btn primary-btn">✅ Done Editing</button>
+            </div>
+        </div>
+
         <div id="state-navigating" class="state-view">
             <div id="path-info-content" class="nav-dashboard">
-                </div>
+            </div>
             <button onclick="stopNavigation()" class="btn danger-btn">⏹️ Stop Navigation</button>
         </div>
 
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=513"></script>
+    <script src="app.js?v=20265558"></script>
 </body>
+
 </html>
