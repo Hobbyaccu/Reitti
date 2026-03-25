@@ -11,6 +11,7 @@ let isNavigating = false;
 let locationWatchId = null;
 let totalDistance = 0;
 let maxReachedIndex = 0;
+let hasEnteredFullscreen = false;
 
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
@@ -170,13 +171,17 @@ function startPermanentLocationWatch() {
 }
 
 async function enterFullscreen() {
-  try {
-    await document.documentElement.requestFullscreen({
-      navigationUI: 'hide'   // hides the browser navigation UI where supported
-    });
-  } catch (err) {
-    console.log("Fullscreen failed:", err);
-  }
+    if (hasEnteredFullscreen || !document.fullscreenEnabled) return;
+
+    try {
+        await document.documentElement.requestFullscreen({
+            navigationUI: 'hide'
+        });
+        hasEnteredFullscreen = true;
+        console.log("✅ Entered fullscreen mode");
+    } catch (err) {
+        console.log("Fullscreen request failed:", err);
+    }
 }
 
 function initializeApp() {
@@ -196,8 +201,6 @@ function initializeApp() {
         () => {}
     );
 
-    enterFullscreen();
-
     map.on('click', e => {
         if (!isDrawing) return;
         pathPoints.push(e.latlng);
@@ -209,6 +212,16 @@ function initializeApp() {
     });
 
     setUIState('idle'); // Initialize UI
+
+    const handleFirstInteraction = () => {
+        enterFullscreen();
+        // Remove listeners so it only happens once
+        document.removeEventListener('touchstart', handleFirstInteraction, { once: true });
+        document.removeEventListener('click', handleFirstInteraction, { once: true });
+    };
+
+    document.addEventListener('touchstart', handleFirstInteraction, { once: true });
+    document.addEventListener('click', handleFirstInteraction, { once: true });
 }
 
 function findMe() {
