@@ -231,34 +231,7 @@ function enterEditMode() {
     isDrawing = false;
     map.doubleClickZoom.disable();
     
-    editMarkers = [];
-    
-    for (let i = 0; i < pathPoints.length - 1; i++) {
-        const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
-        const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
-        
-        const midMarker = L.marker([midLat, midLng], {
-            draggable: true,
-            icon: L.divIcon({
-                className: 'edit-midpoint',
-                html: '<div style="width:20px;height:20px;background:#007aff;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>',
-                iconSize: [20, 20],
-                iconAnchor: [10, 10]
-            })
-        }).addTo(map);
-
-        midMarker.on('dragend', (e) => {
-            const newPos = e.target.getLatLng();
-            pathPoints.splice(i + 1, 0, newPos);
-            
-            // Refresh everything
-            mainPath.setLatLngs(pathPoints);
-            refreshEditMarkers();   // important: rebuild all midpoints
-        });
-
-        editMarkers.push(midMarker);
-    }
-    
+    refreshEditMarkers();
     setUIState('editing');
 }
 
