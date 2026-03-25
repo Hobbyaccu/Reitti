@@ -10,25 +10,23 @@ let isNavigating = false;
 let locationWatchId = null;
 let totalDistance = 0;
 let hasEnteredFullscreen = false;
-
-// --- AUDIO & BACKGROUND ENGINE ---
+let editMarkers = [];
+let isEditing = false;
+let currentWaypointIndex = 1; 
 let wakeLock = null;
 let hasAnnouncedTurn = false;
-// A tiny, valid base64 silent WAV file to keep the audio engine alive
+
+// silent audio.. idk?
 const silentWavData = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 const heartbeatAudio = new Audio(silentWavData);
 heartbeatAudio.loop = true;
 
-// Navigation State
-let currentWaypointIndex = 1; 
 
-// Config Thresholds
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
-const TURN_ANNOUNCE_THRESHOLD = 35; // Trigger audio 35m before turn
+const TURN_ANNOUNCE_THRESHOLD = 10; // Trigger audio 10m before turn
 const WAYPOINT_REACHED_THRESHOLD = 15; // Must get within 15m to progress to the next line
 
-// --- UI STATE MANAGER ---
 function setUIState(state) {
     document.querySelectorAll('.state-view').forEach(el => el.classList.remove('active'));
     document.getElementById(`state-${state}`).classList.add('active');
@@ -41,7 +39,6 @@ function setUIState(state) {
     }
 }
 
-// --- MATH & PROJECTIONS ---
 function calculateDistance(pts) {
     let d = 0;
     for (let i = 0; i < pts.length - 1; i++) d += pts[i].distanceTo(pts[i + 1]);
@@ -197,6 +194,93 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
 }
 
 // --- CORE LOGIC ---
+function refreshEditMarkers() {
+    // Remove old markers
+    editMarkers.forEach(m => m.remove());
+    editMarkers = [];
+    
+    // Re-create them
+    for (let i = 0; i < pathPoints.length - 1; i++) {
+        const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
+        const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
+        
+        const midMarker = L.marker([midLat, midLng], {
+            draggable: true,
+            icon: L.divIcon({
+                className: 'edit-midpoint',
+                html: '<div style="width:20px;height:20px;background:#007aff;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            })
+        }).addTo(map);
+
+        midMarker.on('dragend', (e) => {
+            const newPos = e.target.getLatLng();
+            pathPoints.splice(i + 1, 0, newPos);
+            
+            // Refresh everything
+            mainPath.setLatLngs(pathPoints);
+            refreshEditMarkers();   // important: rebuild all midpoints
+        });
+
+        editMarkers.push(midMarker);
+    }
+}
+function enterEditMode() {
+    isEditing = true;
+    isDrawing = false;
+    map.doubleClickZoom.disable();
+    
+    editMarkers = [];
+    
+    for (let i = 0; i < pathPoints.length - 1; i++) {
+        const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
+        const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
+        
+        const midMarker = L.marker([midLat, midLng], {
+            draggable: true,
+            icon: L.divIcon({
+                className: 'edit-midpoint',
+                html: '<div style="width:20px;height:20px;background:#007aff;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            })
+        }).addTo(map);
+
+        midMarker.on('dragend', (e) => {
+            const newPos = e.target.getLatLng();
+            pathPoints.splice(i + 1, 0, newPos);
+            
+            // Refresh everything
+            mainPath.setLatLngs(pathPoints);
+            refreshEditMarkers();   // important: rebuild all midpoints
+        });
+
+        editMarkers.push(midMarker);
+    }
+    
+    setUIState('editing');
+}
+
+function finishEditing() {
+    isEditing = false;
+    editMarkers.forEach(m => m.remove());
+    editMarkers = [];
+    map.doubleClickZoom.enable();
+    
+    totalDistance = calculateDistance(pathPoints);
+    savePathToStorage();
+    setUIState('ready');
+}
+
+function cancelEditing() {
+    isEditing = false;
+    editMarkers.forEach(m => m.remove());
+    editMarkers = [];
+    map.doubleClickZoom.enable();
+    setUIState('ready');
+}
+
 function startPermanentLocationWatch() {
     if (locationWatchId) return;
     locationWatchId = navigator.geolocation.watchPosition(
