@@ -195,32 +195,59 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
 
 // --- CORE LOGIC ---
 function refreshEditMarkers() {
-    // Remove old markers
+    // Clear old markers
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
-    
-    // Re-create them
+
+    // 1. Create draggable markers for EVERY existing point
+    for (let i = 0; i < pathPoints.length; i++) {
+        const marker = L.marker(pathPoints[i], {
+            draggable: true,
+            icon: L.divIcon({
+                className: 'edit-point',
+                html: `<div style="width:18px;height:18px;background:#007aff;border:3px solid white;border-radius:50%;box-shadow:0 3px 10px rgba(0,0,0,0.4);"></div>`,
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
+            })
+        }).addTo(map);
+
+        marker.on('drag', (e) => {
+            pathPoints[i] = e.target.getLatLng();           // live update
+            mainPath.setLatLngs(pathPoints);                // live line
+        });
+
+        marker.on('dragend', () => {
+            mainPath.setLatLngs(pathPoints);
+            refreshEditMarkers();   // rebuild mids after move
+        });
+
+        editMarkers.push(marker);
+    }
+
+    // 2. Create midpoint markers (for adding new points)
     for (let i = 0; i < pathPoints.length - 1; i++) {
         const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
         const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
-        
+
         const midMarker = L.marker([midLat, midLng], {
             draggable: true,
             icon: L.divIcon({
                 className: 'edit-midpoint',
-                html: '<div style="width:20px;height:20px;background:#007aff;border-radius:50%;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.3);"></div>',
-                iconSize: [20, 20],
-                iconAnchor: [10, 10]
+                html: `<div style="width:14px;height:14px;background:#007aff;border-radius:50%;border:2px solid white;opacity:0.85;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>`,
+                iconSize: [14, 14],
+                iconAnchor: [7, 7]
             })
         }).addTo(map);
+
+        midMarker.on('drag', (e) => {
+            // placeholder for now..
+        });
 
         midMarker.on('dragend', (e) => {
             const newPos = e.target.getLatLng();
             pathPoints.splice(i + 1, 0, newPos);
-            
-            // Refresh everything
             mainPath.setLatLngs(pathPoints);
-            refreshEditMarkers();   // important: rebuild all midpoints
+            refreshEditMarkers();
         });
 
         editMarkers.push(midMarker);
@@ -230,7 +257,9 @@ function enterEditMode() {
     isEditing = true;
     isDrawing = false;
     map.doubleClickZoom.disable();
-    
+
+    if (mainPath) mainPath.setStyle({ color: '#007aff', weight: 6, opacity: 0.85 });
+
     refreshEditMarkers();
     setUIState('editing');
 }
@@ -240,7 +269,7 @@ function finishEditing() {
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
     map.doubleClickZoom.enable();
-    
+
     totalDistance = calculateDistance(pathPoints);
     savePathToStorage();
     setUIState('ready');
