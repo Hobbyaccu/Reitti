@@ -1,7 +1,6 @@
 let map = null;
 let mainPath = null;
 let walkedPath = null;
-let userMarker = null;
 let accuracyCircle = null;
 let headingMarker = null;
 let offPathLine = null;
@@ -70,28 +69,41 @@ function projectPosition(currentPos) {
 }
 
 // --- MAP UPDATES ---
-function updateUserMarkerAndCircle(rawPos, accuracy) {
-    if (!userMarker) {
-        userMarker = L.circleMarker(rawPos, { radius: 8, color: '#ffffff', fillColor: '#007aff', fillOpacity: 1, weight: 3 }).addTo(map);
-    } else userMarker.setLatLng(rawPos);
-
+function updateAccuracyCircle(rawPos, accuracy) {
     if (!accuracyCircle) {
-        accuracyCircle = L.circle(rawPos, { radius: accuracy || 30, color: '#007aff', fillColor: '#007aff', fillOpacity: 0.15, weight: 0 }).addTo(map);
-    } else accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
+        accuracyCircle = L.circle(rawPos, { 
+            radius: accuracy || 30, 
+            color: '#007aff', 
+            fillColor: '#007aff', 
+            fillOpacity: 0.15, 
+            weight: 0 
+        }).addTo(map);
+    } else {
+        accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
+    }
 }
 
 function updateHeading(rawPos, heading) {
     if (!headingMarker) {
         headingMarker = L.marker(rawPos, {
-            icon: L.divIcon({ className: 'heading-arrow', html: '<div style="font-size:24px; color:#007aff; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">▲</div>', iconSize: [24, 24], iconAnchor: [12, 12] }),
+            icon: L.divIcon({
+                className: 'heading-arrow',
+                html: `<div style="width:100%; height:100%; display:flex; align-items:center; justify-content:center; font-size:32px; color:#007aff; text-shadow:0 2px 6px rgba(0,0,0,0.3);">▲</div>`,
+                iconSize: [32, 32],
+                iconAnchor: [16, 16]
+            }),
             zIndexOffset: 1000
         }).addTo(map);
-    } else headingMarker.setLatLng(rawPos);
+    } else {
+        headingMarker.setLatLng(rawPos);
+    }
 
     const el = headingMarker.getElement();
     if (el) {
         const div = el.querySelector('div');
-        if (div) div.style.transform = heading !== null ? `rotate(${heading}deg)` : 'rotate(0deg)';
+        if (div) {
+            div.style.transform = heading !== null ? `rotate(${heading}deg)` : 'rotate(0deg)';
+        }
     }
 }
 
@@ -137,7 +149,7 @@ function startPermanentLocationWatch() {
             const rawPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
             const acc = pos.coords.accuracy || 30;
 
-            updateUserMarkerAndCircle(rawPos, acc);
+            updateAccuracyCircle(rawPos, acc);
             updateHeading(rawPos, pos.coords.heading);
 
             if (isNavigating) {
