@@ -16,6 +16,20 @@ const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
 const ARRIVAL_THRESHOLD = 0.95;
 
+// --- UI STATE MANAGER ---
+function setUIState(state) {
+    document.querySelectorAll('.state-view').forEach(el => el.classList.remove('active'));
+    document.getElementById(`state-${state}`).classList.add('active');
+
+    if (state === 'idle') {
+        const hasSaved = localStorage.getItem('customPath') !== null;
+        document.getElementById('load-btn').style.display = hasSaved ? 'flex' : 'none';
+    } else if (state === 'ready') {
+        document.getElementById('route-distance').textContent = (totalDistance / 1000).toFixed(2) + ' km';
+    }
+}
+
+// --- MATH & PROJECTIONS ---
 function calculateDistance(pts) {
     let d = 0;
     for (let i = 0; i < pts.length - 1; i++) d += pts[i].distanceTo(pts[i + 1]);
@@ -54,28 +68,29 @@ function projectPosition(currentPos) {
     return { point: bestPoint, traveled, index: bestIndex };
 }
 
+// --- MAP UPDATES ---
 function updateUserMarkerAndCircle(rawPos, accuracy) {
     if (!userMarker) {
-        userMarker = L.circleMarker(rawPos, { radius: 10, color: '#29ffdb', fillColor: '#19fff3', fillOpacity: 0.25, weight: 3 }).addTo(map);
+        userMarker = L.circleMarker(rawPos, { radius: 8, color: '#ffffff', fillColor: '#007aff', fillOpacity: 1, weight: 3 }).addTo(map);
     } else userMarker.setLatLng(rawPos);
 
     if (!accuracyCircle) {
-        accuracyCircle = L.circle(rawPos, { radius: accuracy || 30, color: '#14e1fc', fillColor: '#77b0ff', fillOpacity: 0.15, weight: 2 }).addTo(map);
+        accuracyCircle = L.circle(rawPos, { radius: accuracy || 30, color: '#007aff', fillColor: '#007aff', fillOpacity: 0.15, weight: 0 }).addTo(map);
     } else accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
 }
 
 function updateHeading(rawPos, heading) {
     if (!headingMarker) {
         headingMarker = L.marker(rawPos, {
-            icon: L.divIcon({ className: 'heading-arrow', html: '<span>▲</span>', iconSize: [28, 28], iconAnchor: [14, 14] }),
+            icon: L.divIcon({ className: 'heading-arrow', html: '<div style="font-size:24px; color:#007aff; text-shadow: 0 2px 4px rgba(0,0,0,0.3);">▲</div>', iconSize: [24, 24], iconAnchor: [12, 12] }),
             zIndexOffset: 1000
         }).addTo(map);
     } else headingMarker.setLatLng(rawPos);
 
     const el = headingMarker.getElement();
     if (el) {
-        const span = el.querySelector('span');
-        if (span) span.style.transform = heading !== null ? `rotate(${heading}deg)` : 'rotate(0deg)';
+        const div = el.querySelector('div');
+        if (div) div.style.transform = heading !== null ? `rotate(${heading}deg)` : 'rotate(0deg)';
     }
 }
 
@@ -83,32 +98,37 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
     const walkedKm = (traveled / 1000).toFixed(2);
     const remaining = Math.max(0, totalDistance - traveled);
     const remKm = (remaining / 1000).toFixed(2);
-    const percent = totalDistance > 0 ? Math.round((traveled / totalDistance) * 100) : 0;
-    const speedKmh = speed !== null ? (speed * 3.6).toFixed(1) : "—";
-    const accM = accuracy ? accuracy.toFixed(0) : "—";
-    const checkpoints = pathPoints.length > 0 ? Math.min(maxReachedIndex + 1, pathPoints.length) : 0;
-
+    const speedKmh = speed !== null ? (speed * 3.6).toFixed(1) : "0.0";
+    
     let html = `
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem 1.5rem;margin-bottom:0.6rem;">
-            <div><strong>🚶 Walked:</strong> ${walkedKm} km</div>
-            <div><strong>🏁 Remaining:</strong> ${remKm} km</div>
-            <div><strong>📊 Progress:</strong> ${percent}%</div>
-            <div><strong>🏁 Checkpoints:</strong> ${checkpoints} / ${pathPoints.length}</div>
-        </div>
-        <div style="display:flex;gap:1.5rem;flex-wrap:wrap;">
-            <div><strong>⚡ Speed:</strong> ${speedKmh} km/h</div>
-            <div><strong>📏 Accuracy:</strong> ±${accM} m</div>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <span class="stat-label">Walked</span>
+                <span class="stat-value">${walkedKm} km</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Remaining</span>
+                <span class="stat-value">${remKm} km</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Speed</span>
+                <span class="stat-value">${speedKmh} km/h</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Accuracy</span>
+                <span class="stat-value">±${accuracy ? accuracy.toFixed(0) : "—"} m</span>
+            </div>
         </div>
     `;
 
     if (offPathDist > OFF_PATH_THRESHOLD) {
-        html += `<div style="margin-top:0.8rem;padding:0.6rem 1rem;background:#fff3e0;border-radius:10px;border-left:5px solid #ff8800;"><strong style="color:#ff8800;">⚠️ Off path (+${offPathDist.toFixed(0)} m)</strong></div>`;
+        html += `<div class="warning-banner">⚠️ Off path by ${offPathDist.toFixed(0)}m</div>`;
     }
 
-    document.getElementById('path-info').innerHTML = html;
-    document.getElementById('path-info').style.display = 'block';
+    document.getElementById('path-info-content').innerHTML = html;
 }
 
+// --- CORE LOGIC ---
 function startPermanentLocationWatch() {
     if (locationWatchId) return;
     locationWatchId = navigator.geolocation.watchPosition(
@@ -131,7 +151,7 @@ function startPermanentLocationWatch() {
 
                 const distToPath = rawPos.distanceTo(proj.point);
                 if (distToPath > OFF_PATH_THRESHOLD) {
-                    if (!offPathLine) offPathLine = L.polyline([rawPos, proj.point], { color: '#ff8800', weight: 3, opacity: 0.75, dashArray: '8, 6' }).addTo(map);
+                    if (!offPathLine) offPathLine = L.polyline([rawPos, proj.point], { color: '#ff3b30', weight: 3, opacity: 0.8, dashArray: '6, 6' }).addTo(map);
                     else offPathLine.setLatLngs([rawPos, proj.point]);
                 } else if (offPathLine) { offPathLine.remove(); offPathLine = null; }
 
@@ -151,10 +171,10 @@ function startPermanentLocationWatch() {
 
 function initializeApp() {
     if (map) return;
-    map = L.map('map', { zoomControl: true }).setView([60.20911396893135, 24.955160312780436], 13);
+    map = L.map('map', { zoomControl: false }).setView([60.20911396893135, 24.955160312780436], 13);
 
     L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
@@ -170,11 +190,13 @@ function initializeApp() {
         if (!isDrawing) return;
         pathPoints.push(e.latlng);
         if (mainPath) mainPath.setLatLngs(pathPoints);
-        else mainPath = L.polyline(pathPoints, { color: '#09ff00', weight: 6, opacity: 0.85 }).addTo(map);
-        document.getElementById('undo-btn').style.display = 'inline-block';
+        else mainPath = L.polyline(pathPoints, { color: '#007aff', weight: 6, opacity: 0.85 }).addTo(map);
+        
+        document.getElementById('undo-btn').disabled = false;
+        if(pathPoints.length >= 2) document.getElementById('finish-btn').disabled = false;
     });
 
-    document.getElementById('draw-btn').disabled = false;
+    setUIState('idle'); // Initialize UI
 }
 
 function findMe() {
@@ -182,38 +204,36 @@ function findMe() {
     navigator.geolocation.getCurrentPosition(
         (pos) => {
             const userPos = L.latLng(pos.coords.latitude, pos.coords.longitude);
-            map.flyTo(userPos, Math.max(map.getZoom(), 15), { duration: 1 });
-            const temp = L.circleMarker(userPos, { radius: 14, color: '#00ff00', fillOpacity: 0.6, weight: 5 }).addTo(map);
-            setTimeout(() => temp.remove(), 2200);
+            map.flyTo(userPos, Math.max(map.getZoom(), 16), { duration: 1 });
+            const temp = L.circleMarker(userPos, { radius: 20, color: '#007aff', fillOpacity: 0.3, weight: 0 }).addTo(map);
+            setTimeout(() => temp.remove(), 1000);
         },
         () => alert("Couldn't get location — check browser/phone settings")
     );
 }
 
+// --- BUTTON ACTIONS ---
 function startDrawing() {
     if (!map) return alert("Load map first");
     clearEverything();
     isDrawing = true;
     map.doubleClickZoom.disable();
-    document.getElementById('finish-btn').disabled = false;
-    document.getElementById('undo-btn').style.display = 'inline-block';
-    
-    // Show small top pill for 5 seconds
-    const overlay = document.getElementById('drawing-overlay');
-    overlay.style.display = 'block';
-    setTimeout(() => { overlay.style.display = 'none'; }, 5000);
+    setUIState('drawing');
 }
 
 function undoLastPoint() {
     if (!isDrawing || pathPoints.length === 0) return;
     pathPoints.pop();
     if (mainPath) mainPath.setLatLngs(pathPoints);
-    if (pathPoints.length === 0) document.getElementById('undo-btn').style.display = 'none';
+    
+    if (pathPoints.length === 0) document.getElementById('undo-btn').disabled = true;
+    if (pathPoints.length < 2) document.getElementById('finish-btn').disabled = true;
 }
 
 function finishDrawing() {
-    if (pathPoints.length < 2) return alert("Need at least 2 points");
+    if (pathPoints.length < 2) return;
 
+    // Loop snapping
     if (pathPoints.length >= 3) {
         const distToStart = pathPoints[0].distanceTo(pathPoints[pathPoints.length - 1]);
         if (distToStart < LOOP_SNAP_THRESHOLD) {
@@ -224,15 +244,9 @@ function finishDrawing() {
 
     isDrawing = false;
     map.doubleClickZoom.enable();
-    document.getElementById('undo-btn').style.display = 'none';
-    document.getElementById('finish-btn').disabled = true;
-    document.getElementById('nav-btn').disabled = false;
-    document.getElementById('clear-btn').disabled = false;
-    document.getElementById('load-btn').disabled = true;
-    document.getElementById('drawing-overlay').style.display = 'none';
-
     totalDistance = calculateDistance(pathPoints);
     savePathToStorage();
+    setUIState('ready');
 }
 
 function loadSavedPath() { 
@@ -242,13 +256,11 @@ function loadSavedPath() {
     pathPoints = coords.map(c => L.latLng(c[0], c[1]));
 
     if (mainPath) mainPath.remove();
-    mainPath = L.polyline(pathPoints, { color: '#00ff00', weight: 6, opacity: 0.85 }).addTo(map);
+    mainPath = L.polyline(pathPoints, { color: '#007aff', weight: 6, opacity: 0.85 }).addTo(map);
 
     totalDistance = calculateDistance(pathPoints);
-    document.getElementById('nav-btn').disabled = false;
-    document.getElementById('clear-btn').disabled = false;
-    document.getElementById('load-btn').disabled = true;
-    updateInfo(0, null, null, 0);
+    map.fitBounds(mainPath.getBounds(), { padding: [50, 50] });
+    setUIState('ready');
 }
 
 function savePathToStorage() { 
@@ -260,41 +272,37 @@ function clearEverything() {
     if (mainPath) { mainPath.remove(); mainPath = null; }
     if (walkedPath) { walkedPath.remove(); walkedPath = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
-    if (headingMarker) { headingMarker.remove(); headingMarker = null; }
     pathPoints = [];
     totalDistance = 0;
     maxReachedIndex = 0;
+    isDrawing = false;
     isNavigating = false;
     if (map) map.doubleClickZoom.enable();
-    document.getElementById('path-info').style.display = 'none';
-    document.getElementById('undo-btn').style.display = 'none';
-    document.getElementById('drawing-overlay').style.display = 'none';
+    setUIState('idle');
 }
 
 function clearPath() {
     clearEverything();
     localStorage.removeItem('customPath');
-    document.getElementById('draw-btn').disabled = false;
-    document.getElementById('load-btn').disabled = false;
 }
 
 function startNavigation() {
-    if (pathPoints.length < 2) return alert("Draw a path first");
-    if (mainPath) mainPath.setStyle({ color: '#aaaaaa', weight: 4, opacity: 0.5 });
-    walkedPath = L.polyline([], { color: '#33ff00', weight: 8, opacity: 1 }).addTo(map);
+    if (pathPoints.length < 2) return;
+    if (mainPath) mainPath.setStyle({ color: '#8e8e93', weight: 5, opacity: 0.6 });
+    walkedPath = L.polyline([], { color: '#34c759', weight: 8, opacity: 1 }).addTo(map);
 
     maxReachedIndex = 0;
     isNavigating = true;
-    document.getElementById('stop-btn').style.display = 'inline-block';
-    document.getElementById('nav-btn').disabled = true;
+    updateInfo(0, 0, 0, 0); // initial render
+    setUIState('navigating');
 }
 
 function stopNavigation() {
     isNavigating = false;
     if (walkedPath) { walkedPath.remove(); walkedPath = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
-    document.getElementById('stop-btn').style.display = 'none';
-    document.getElementById('nav-btn').disabled = false;
+    if (mainPath) mainPath.setStyle({ color: '#007aff', weight: 6, opacity: 0.85 }); // Restore color
+    setUIState('ready');
 }
 
 window.onload = () => setTimeout(() => { if (!map) initializeApp(); }, 150);
