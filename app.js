@@ -12,6 +12,7 @@ let totalDistance = 0;
 let maxReachedIndex = 0;
 let maxTraveled = 0;
 let hasEnteredFullscreen = false;
+let vres = 5;
 
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
