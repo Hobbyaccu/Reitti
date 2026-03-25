@@ -5,9 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link rel="manifest" href="manifest.json?v=8">
+    <link rel="manifest" href="manifest.json?v=9">
     <title>WIP Nav</title>
-    <link rel="stylesheet" href="style.css?v=8">
+    <link rel="stylesheet" href="style.css?v=9">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 
@@ -49,8 +49,9 @@
         </div>
 
         <div id="state-editing" class="state-view">
-            <div class="pill-instruction">Drag the blue dots to add points</div>
+            <div class="pill-instruction">Drag the blue dots to edit • Tap Undo to revert</div>
             <div class="btn-row">
+                <button onclick="undoEdit()" id="edit-undo-btn" class="btn secondary-btn">↩️ Undo</button>
                 <button onclick="cancelEditing()" class="btn secondary-btn">Cancel</button>
                 <button onclick="finishEditing()" class="btn primary-btn">✅ Done Editing</button>
             </div>
@@ -65,7 +66,7 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=9"></script>
 </body>
 
 </html>
