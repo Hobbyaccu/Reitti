@@ -314,7 +314,7 @@ function enterEditMode() {
 
     // Make sure undo button starts disabled (nothing to undo yet)
     const undoBtn = document.getElementById('edit-undo-btn');
-    if (undoBtn) undoBtn.disabled = true;
+    if (undoBtn) undoBtn.disabled = false;
 }
 
 function finishEditing() {
