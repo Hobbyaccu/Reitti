@@ -1,24 +1,13 @@
 {
-  "name": "QWIPQ Navigation",
-  "short_name": "QWIPQ",
-  "description": "Custom path navigation app",
-  "start_url": "/Reitti/",
-  "scope": "/Reitti/",
-  "id": "/Reitti/",
+  "lang": "en",
+  "dir": "ltr",
+  "name": "Nav",
+  "short_name": "Nav",
+  "scope": "/",
+  "id": "Reitti",
+  "start_url": "/index.html",
   "display": "fullscreen",
-  "background_color": "#e5e5ea",
-  "theme_color": "#007aff",
-  "orientation": "portrait-primary",
-  "icons": [
-    {
-      "src": "/Reitti/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/Reitti/icon-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    }
-  ]
+  "orientation": "portrait",
+  "theme_color": "white",
+  "background_color": "white"
 }
