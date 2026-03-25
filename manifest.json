@@ -2,7 +2,7 @@
   "name": "QWIPQ Navigation",
   "short_name": "QWIPQ",
   "description": "Custom path navigation app",
-  "start_url": "",
+  "start_url": "/",
   "display": "fullscreen",
   "background_color": "#e5e5ea",
   "theme_color": "#007aff",
