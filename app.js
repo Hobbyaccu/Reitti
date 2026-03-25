@@ -11,6 +11,7 @@ let isNavigating = false;
 let locationWatchId = null;
 let totalDistance = 0;
 let maxReachedIndex = 0;
+let versR = 555;
 
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
