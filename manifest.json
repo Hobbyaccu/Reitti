@@ -1,13 +1,13 @@
 {
-  "lang": "en",
-  "dir": "ltr",
-  "name": "Nav",
-  "short_name": "Nav",
-  "scope": "/",
-  "id": "Reitti",
-  "start_url": "/index.html",
-  "display": "fullscreen",
-  "orientation": "portrait",
-  "theme_color": "white",
-  "background_color": "white"
+  "lang": "en",
+  "dir": "ltr",
+  "name": "Nav",
+  "short_name": "Nav",
+  "scope": "/",
+  "id": "Reitti",
+  "start_url": "/index.html",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "theme_color": "white",
+  "background_color": "white"
 }
