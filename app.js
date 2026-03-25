@@ -11,13 +11,22 @@ let locationWatchId = null;
 let totalDistance = 0;
 let hasEnteredFullscreen = false;
 
+// --- AUDIO & BACKGROUND ENGINE ---
+let wakeLock = null;
+let hasAnnouncedTurn = false;
+// A tiny, valid base64 silent WAV file to keep the audio engine alive
+const silentWavData = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
+const heartbeatAudio = new Audio(silentWavData);
+heartbeatAudio.loop = true;
+
 // Navigation State
 let currentWaypointIndex = 1; 
 
 // Config Thresholds
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
-const WAYPOINT_REACHED_THRESHOLD = 30; // Must get within 30m of the next point to progress
+const TURN_ANNOUNCE_THRESHOLD = 35; // Trigger audio 35m before turn
+const WAYPOINT_REACHED_THRESHOLD = 15; // Must get within 15m to progress to the next line
 
 // --- UI STATE MANAGER ---
 function setUIState(state) {
@@ -39,7 +48,6 @@ function calculateDistance(pts) {
     return d;
 }
 
-// Fixed to account for high-latitude scaling (crucial for accurate line projections)
 function closestPointOnSegment(p, a, b) {
     const scale = Math.cos(a.lat * Math.PI / 180); 
     const dx = (b.lng - a.lng) * scale;
@@ -51,8 +59,68 @@ function closestPointOnSegment(p, a, b) {
     let t = (((p.lng - a.lng) * scale) * dx + (p.lat - a.lat) * dy) / len2;
     t = Math.max(0, Math.min(1, t));
     
-    // Reverse scale for the actual mapping coordinate
     return { point: L.latLng(a.lat + t * dy, a.lng + (t * dx) / scale), t };
+}
+
+// Determines Left or Right based on 3 points (prev, current, next)
+function getTurnDirection(pPrev, pCurr, pNext) {
+    const scale = Math.cos(pCurr.lat * Math.PI / 180);
+    
+    // Vector 1 (Entering the turn)
+    const dx1 = (pCurr.lng - pPrev.lng) * scale;
+    const dy1 = pCurr.lat - pPrev.lat;
+    
+    // Vector 2 (Exiting the turn)
+    const dx2 = (pNext.lng - pCurr.lng) * scale;
+    const dy2 = pNext.lat - pCurr.lat;
+
+    // 2D Cross Product
+    const cross = dx1 * dy2 - dy1 * dx2;
+    
+    // Calculate angle to filter out slight bends (Dot Product)
+    const dot = dx1 * dx2 + dy1 * dy2;
+    const mag1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+    const mag2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+    
+    if (mag1 === 0 || mag2 === 0) return null;
+    
+    const angle = Math.acos(dot / (mag1 * mag2)) * (180 / Math.PI);
+    
+    // If the turn is less than 20 degrees, it's just a curve, don't announce
+    if (angle < 20) return null;
+
+    // Cross product > 0 is a Left turn in map coordinates
+    return cross > 0 ? 'Left' : 'Right';
+}
+
+// --- AUDIO & BACKGROUND HANDLERS ---
+async function requestWakeLock() {
+    try {
+        if ('wakeLock' in navigator) {
+            wakeLock = await navigator.wakeLock.request('screen');
+            console.log("☀️ Wake Lock active");
+        }
+    } catch (err) {
+        console.error(`Wake Lock error: ${err.message}`);
+    }
+}
+
+function initMediaSession() {
+    if ('mediaSession' in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: 'Navigating Route',
+            artist: 'Nav App',
+            album: 'Background Mode Active'
+        });
+        navigator.mediaSession.setActionHandler('play', () => heartbeatAudio.play());
+        navigator.mediaSession.setActionHandler('pause', () => heartbeatAudio.pause());
+    }
+}
+
+function announceTurn(direction) {
+    console.log(`🔊 Announcing Turn: ${direction}`);
+    const sound = new Audio(`${direction}.mp3`);
+    sound.play().catch(e => console.log("Audio play blocked", e));
 }
 
 // --- MAP UPDATES ---
@@ -140,19 +208,32 @@ function startPermanentLocationWatch() {
             updateHeading(rawPos, pos.coords.heading);
 
             if (isNavigating) {
-                // 1. WAYPOINT PROGRESSION CHECK
-                // Using a while-loop just in case they are moving fast and skip multiple tight points
-                while (currentWaypointIndex < pathPoints.length && rawPos.distanceTo(pathPoints[currentWaypointIndex]) < WAYPOINT_REACHED_THRESHOLD) {
-                    currentWaypointIndex++;
+                const distToUpcoming = rawPos.distanceTo(pathPoints[currentWaypointIndex]);
+
+                // 1. ANNOUNCE TURN LOGIC (Trigger between 15m and 35m)
+                if (!hasAnnouncedTurn && distToUpcoming <= TURN_ANNOUNCE_THRESHOLD && currentWaypointIndex < pathPoints.length - 1) {
+                    const pPrev = pathPoints[currentWaypointIndex - 1];
+                    const pCurr = pathPoints[currentWaypointIndex];
+                    const pNext = pathPoints[currentWaypointIndex + 1];
+                    
+                    const direction = getTurnDirection(pPrev, pCurr, pNext);
+                    if (direction) announceTurn(direction);
+                    
+                    hasAnnouncedTurn = true; // Prevent spamming
                 }
 
-                // 2. COMPLETION CHECK
+                // 2. WAYPOINT PROGRESSION CHECK
+                while (currentWaypointIndex < pathPoints.length && rawPos.distanceTo(pathPoints[currentWaypointIndex]) < WAYPOINT_REACHED_THRESHOLD) {
+                    currentWaypointIndex++;
+                    hasAnnouncedTurn = false; // Reset for the next waypoint
+                }
+
+                // 3. COMPLETION CHECK
                 if (currentWaypointIndex >= pathPoints.length) {
                     updateInfo(totalDistance, pos.coords.speed, acc, 0);
                     walkedPath.setLatLngs(pathPoints);
                     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
                     
-                    // Small timeout to allow UI to render the final line before the alert blocks the thread
                     setTimeout(() => {
                         alert("🎉 You've reached the end! Great job!");
                         stopNavigation();
@@ -160,21 +241,21 @@ function startPermanentLocationWatch() {
                     return; 
                 }
 
-                // 3. PROJECT ONTO ACTIVE SEGMENT ONLY
+                // 4. PROJECT ONTO ACTIVE SEGMENT
                 const targetPt = pathPoints[currentWaypointIndex];
                 const prevPt = pathPoints[currentWaypointIndex - 1];
                 const projection = closestPointOnSegment(rawPos, prevPt, targetPt);
                 const projPt = projection.point;
                 const distToPath = rawPos.distanceTo(projPt);
 
-                // 4. CALCULATE TRAVELED DISTANCE
+                // 5. CALCULATE TRAVELED DISTANCE
                 let traveledSoFar = 0;
                 for (let i = 0; i < currentWaypointIndex - 1; i++) {
                     traveledSoFar += pathPoints[i].distanceTo(pathPoints[i + 1]);
                 }
                 traveledSoFar += prevPt.distanceTo(projPt);
 
-                // 5. UPDATE MAP VISUALS
+                // 6. UPDATE MAP VISUALS
                 const walkedPts = pathPoints.slice(0, currentWaypointIndex);
                 walkedPts.push(projPt);
                 walkedPath.setLatLngs(walkedPts);
@@ -202,7 +283,6 @@ async function enterFullscreen() {
     try {
         await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
         hasEnteredFullscreen = true;
-        console.log("✅ Entered fullscreen mode");
     } catch (err) {
         console.log("Fullscreen request failed:", err);
     }
@@ -256,7 +336,7 @@ function findMe() {
             const temp = L.circleMarker(userPos, { radius: 20, color: '#007aff', fillOpacity: 0.3, weight: 0 }).addTo(map);
             setTimeout(() => temp.remove(), 1000);
         },
-        () => alert("Couldn't get location — check browser/phone settings")
+        () => alert("Couldn't get location")
     );
 }
 
@@ -333,14 +413,19 @@ function clearPath() {
     localStorage.removeItem('customPath');
 }
 
-function startNavigation() {
+async function startNavigation() {
     if (pathPoints.length < 2) return;
-    if (mainPath) mainPath.setStyle({ color: '#8e8e93', weight: 5, opacity: 0.6 });
     
-    // Start drawing walked path from the very first point
+    // Kick off all background survival tactics on user gesture
+    heartbeatAudio.play().catch(e => console.log("Heartbeat blocked", e));
+    initMediaSession();
+    await requestWakeLock();
+    hasAnnouncedTurn = false;
+
+    if (mainPath) mainPath.setStyle({ color: '#8e8e93', weight: 5, opacity: 0.6 });
     walkedPath = L.polyline([pathPoints[0]], { color: '#34c759', weight: 8, opacity: 1 }).addTo(map);
 
-    currentWaypointIndex = 1; // Reset target to the first drawn line segment
+    currentWaypointIndex = 1; 
     isNavigating = true;
     updateInfo(0, 0, 0, 0);
     setUIState('navigating');
@@ -348,6 +433,9 @@ function startNavigation() {
 
 function stopNavigation() {
     isNavigating = false;
+    heartbeatAudio.pause();
+    if (wakeLock) wakeLock.release().then(() => wakeLock = null);
+    
     if (walkedPath) { walkedPath.remove(); walkedPath = null; }
     if (offPathLine) { offPathLine.remove(); offPathLine = null; }
     if (mainPath) mainPath.setStyle({ color: '#007aff', weight: 6, opacity: 0.85 }); 
