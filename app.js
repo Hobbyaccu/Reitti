@@ -10,6 +10,7 @@ let isNavigating = false;
 let locationWatchId = null;
 let totalDistance = 0;
 let maxReachedIndex = 0;
+let maxTraveled = 0;
 let hasEnteredFullscreen = false;
 
 const OFF_PATH_THRESHOLD = 40;
@@ -49,34 +50,51 @@ function closestPointOnSegment(p, a, b) {
 function projectPosition(currentPos) {
     if (pathPoints.length < 2) return { point: currentPos, traveled: 0, index: 0 };
 
-    let bestDist = Infinity, bestPoint = null, bestIndex = 0, bestT = 0;
+    let minDist = Infinity;
     for (let i = 0; i < pathPoints.length - 1; i++) {
         const res = closestPointOnSegment(currentPos, pathPoints[i], pathPoints[i + 1]);
         const dist = currentPos.distanceTo(res.point);
-        if (dist < bestDist) {
-            bestDist = dist;
+        if (dist < minDist) minDist = dist;
+    }
+
+    const TOL = 5;
+    let bestTraveled = Infinity;
+    let bestPoint = null;
+    let bestIndex = 0;
+    let bestT = 0;
+
+    for (let i = 0; i < pathPoints.length - 1; i++) {
+        const res = closestPointOnSegment(currentPos, pathPoints[i], pathPoints[i + 1]);
+        const dist = currentPos.distanceTo(res.point);
+
+        if (dist > minDist + TOL) continue; // not competitive
+
+        let thisTraveled = 0;
+        for (let j = 0; j < i; j++) {
+            thisTraveled += pathPoints[j].distanceTo(pathPoints[j + 1]);
+        }
+        thisTraveled += res.t * pathPoints[i].distanceTo(pathPoints[i + 1]);
+
+        if (thisTraveled < bestTraveled) {
+            bestTraveled = thisTraveled;
             bestPoint = res.point;
             bestIndex = i;
             bestT = res.t;
         }
     }
 
-    let traveled = 0;
-    for (let i = 0; i < bestIndex; i++) traveled += pathPoints[i].distanceTo(pathPoints[i + 1]);
-    traveled += bestT * pathPoints[bestIndex].distanceTo(pathPoints[bestIndex + 1]);
-
-    return { point: bestPoint, traveled, index: bestIndex };
+    return { point: bestPoint, traveled: bestTraveled, index: bestIndex };
 }
 
 // --- MAP UPDATES ---
 function updateAccuracyCircle(rawPos, accuracy) {
     if (!accuracyCircle) {
-        accuracyCircle = L.circle(rawPos, { 
-            radius: accuracy || 30, 
-            color: '#007aff', 
-            fillColor: '#007aff', 
-            fillOpacity: 0.15, 
-            weight: 0 
+        accuracyCircle = L.circle(rawPos, {
+            radius: accuracy || 30,
+            color: '#007aff',
+            fillColor: '#007aff',
+            fillOpacity: 0.15,
+            weight: 0
         }).addTo(map);
     } else {
         accuracyCircle.setLatLng(rawPos).setRadius(accuracy || 30);
@@ -112,7 +130,7 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
     const remaining = Math.max(0, totalDistance - traveled);
     const remKm = (remaining / 1000).toFixed(2);
     const speedKmh = speed !== null ? (speed * 3.6).toFixed(1) : "0.0";
-    
+
     let html = `
         <div class="stats-grid">
             <div class="stat-item">
@@ -154,7 +172,10 @@ function startPermanentLocationWatch() {
 
             if (isNavigating) {
                 const proj = projectPosition(rawPos);
-                if (proj.index > maxReachedIndex) maxReachedIndex = proj.index;
+                if (totalDistance > 0 && maxTraveled / totalDistance > ARRIVAL_THRESHOLD) {
+                    alert("🎉 You've reached the end! Great job!");
+                    stopNavigation();
+                }
 
                 if (walkedPath) {
                     const walkedPts = pathPoints.slice(0, proj.index + 1);
@@ -210,7 +231,7 @@ function initializeApp() {
 
     navigator.geolocation.getCurrentPosition(
         (pos) => map.flyTo(L.latLng(pos.coords.latitude, pos.coords.longitude), 15, { duration: 1.5 }),
-        () => {}
+        () => { }
     );
 
     map.on('click', e => {
@@ -218,9 +239,9 @@ function initializeApp() {
         pathPoints.push(e.latlng);
         if (mainPath) mainPath.setLatLngs(pathPoints);
         else mainPath = L.polyline(pathPoints, { color: '#007aff', weight: 6, opacity: 0.85 }).addTo(map);
-        
+
         document.getElementById('undo-btn').disabled = false;
-        if(pathPoints.length >= 2) document.getElementById('finish-btn').disabled = false;
+        if (pathPoints.length >= 2) document.getElementById('finish-btn').disabled = false;
     });
 
     setUIState('idle'); // Initialize UI
@@ -262,7 +283,7 @@ function undoLastPoint() {
     if (!isDrawing || pathPoints.length === 0) return;
     pathPoints.pop();
     if (mainPath) mainPath.setLatLngs(pathPoints);
-    
+
     if (pathPoints.length === 0) document.getElementById('undo-btn').disabled = true;
     if (pathPoints.length < 2) document.getElementById('finish-btn').disabled = true;
 }
@@ -286,7 +307,7 @@ function finishDrawing() {
     setUIState('ready');
 }
 
-function loadSavedPath() { 
+function loadSavedPath() {
     const raw = localStorage.getItem('customPath');
     if (!raw) return;
     const coords = JSON.parse(raw);
@@ -300,7 +321,7 @@ function loadSavedPath() {
     setUIState('ready');
 }
 
-function savePathToStorage() { 
+function savePathToStorage() {
     const data = pathPoints.map(p => [p.lat, p.lng]);
     localStorage.setItem('customPath', JSON.stringify(data));
 }
@@ -312,6 +333,7 @@ function clearEverything() {
     pathPoints = [];
     totalDistance = 0;
     maxReachedIndex = 0;
+    maxTraveled = 0;
     isDrawing = false;
     isNavigating = false;
     if (map) map.doubleClickZoom.enable();
@@ -328,9 +350,9 @@ function startNavigation() {
     if (mainPath) mainPath.setStyle({ color: '#8e8e93', weight: 5, opacity: 0.6 });
     walkedPath = L.polyline([], { color: '#34c759', weight: 8, opacity: 1 }).addTo(map);
 
-    maxReachedIndex = 0;
+    maxTraveled = 0;
     isNavigating = true;
-    updateInfo(0, 0, 0, 0); // initial render
+    updateInfo(0, 0, 0, 0);
     setUIState('navigating');
 }
 
