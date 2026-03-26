@@ -5,16 +5,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-    <link rel="manifest" href="manifest.json?v=12">
+    <link rel="manifest" href="manifest.json?v=13">
     <title>WIP Nav</title>
-    <link rel="stylesheet" href="style.css?v=12">
+    <link rel="stylesheet" href="style.css?v=13">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 </head>
 
 <body>
     <header id="floating-header">
         <h1>Nav</h1>
-        <button onclick="findMe()" id="findme-btn" class="icon-btn" aria-label="Find Me">📍</button>
+        <div class="header-actions">
+            <button onclick="findMe()" id="findme-btn" class="icon-btn" aria-label="Find Me">📍</button>
+            <button onclick="toggleLayers()" id="layers-btn" class="icon-btn" aria-label="Map Layers">🗺️</button>
+        </div>
     </header>
 
     <div id="map"></div>
@@ -65,8 +68,23 @@
 
     </div>
 
+    <!-- NEW: Map Layers Modal -->
+    <div id="layers-panel" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.65); z-index: 10000; align-items: center; justify-content: center;">
+        <div onclick="event.stopImmediatePropagation()" style="background: #ffffff; border-radius: 20px; width: 92%; max-width: 340px; box-shadow: 0 20px 40px rgba(0,0,0,0.3); overflow: hidden; max-height: 85vh;">
+            
+            <!-- Modal header -->
+            <div style="padding: 18px 22px; border-bottom: 1px solid #e5e5e5; display: flex; align-items: center; justify-content: space-between;">
+                <h3 style="margin: 0; font-size: 1.35rem; font-weight: 600;">🗺️ Map Layers</h3>
+                <button onclick="toggleLayers()" style="background: none; border: none; font-size: 28px; line-height: 1; padding: 4px 10px; cursor: pointer;">✕</button>
+            </div>
+
+            <!-- Layer options populated by JS -->
+            <div id="layer-list" style="padding: 12px 8px; max-height: 58vh; overflow-y: auto;"></div>
+        </div>
+    </div>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script src="app.js?v=12"></script>
+    <script src="app.js?v=13"></script>
 </body>
 
 </html>
