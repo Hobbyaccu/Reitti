@@ -17,7 +17,7 @@ let wakeLock = null;
 let hasAnnouncedTurn = false;
 let editUndoStack = [];
 
-// NEW: Map layers management
+// Map layers management
 let currentTileLayer = null;
 let activeLayerId = 'voyager';
 
@@ -34,7 +34,8 @@ const availableLayers = [
         id: 'dark',
         name: 'Dark',
         icon: '🌙',
-        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_matter/{z}/{x}/{y}.png',
+        // FIXED: Using the working dark_all endpoint (dark_matter was removed by CARTO)
+        url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: 'abcd'
     },
@@ -56,8 +57,8 @@ heartbeatAudio.loop = true;
 
 const OFF_PATH_THRESHOLD = 40;
 const LOOP_SNAP_THRESHOLD = 30;
-const TURN_ANNOUNCE_THRESHOLD = 10; // Trigger audio 10m before turn
-const WAYPOINT_REACHED_THRESHOLD = 15; // Must get within 15m to progress to the next line
+const TURN_ANNOUNCE_THRESHOLD = 10;
+const WAYPOINT_REACHED_THRESHOLD = 15;
 
 function setUIState(state) {
     document.querySelectorAll('.state-view').forEach(el => el.classList.remove('active'));
@@ -91,22 +92,17 @@ function closestPointOnSegment(p, a, b) {
     return { point: L.latLng(a.lat + t * dy, a.lng + (t * dx) / scale), t };
 }
 
-// Determines Left or Right based on 3 points (prev, current, next)
 function getTurnDirection(pPrev, pCurr, pNext) {
     const scale = Math.cos(pCurr.lat * Math.PI / 180);
     
-    // Vector 1 (Entering the turn)
     const dx1 = (pCurr.lng - pPrev.lng) * scale;
     const dy1 = pCurr.lat - pPrev.lat;
     
-    // Vector 2 (Exiting the turn)
     const dx2 = (pNext.lng - pCurr.lng) * scale;
     const dy2 = pNext.lat - pCurr.lat;
 
-    // 2D Cross Product
     const cross = dx1 * dy2 - dy1 * dx2;
     
-    // Calculate angle to filter out slight bends (Dot Product)
     const dot = dx1 * dx2 + dy1 * dy2;
     const mag1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
     const mag2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
@@ -115,10 +111,8 @@ function getTurnDirection(pPrev, pCurr, pNext) {
     
     const angle = Math.acos(dot / (mag1 * mag2)) * (180 / Math.PI);
     
-    // If the turn is less than 20 degrees, it's just a curve, don't announce
     if (angle < 20) return null;
 
-    // Cross product > 0 is a Left turn in map coordinates
     return cross > 0 ? 'Left' : 'Right';
 }
 
@@ -227,7 +221,6 @@ function updateInfo(traveled, speed, accuracy, offPathDist) {
 
 // --- CORE LOGIC ---
 function saveEditState() {
-    // Only save if the path actually changed (avoid duplicates)
     const currentSerialized = JSON.stringify(pathPoints.map(p => [p.lat, p.lng]));
     
     if (editUndoStack.length === 0 || 
@@ -235,7 +228,6 @@ function saveEditState() {
         
         editUndoStack.push(currentSerialized);
         
-        // Limit stack size
         if (editUndoStack.length > 30) {
             editUndoStack.shift();
         }
@@ -243,11 +235,9 @@ function saveEditState() {
 }
 
 function refreshEditMarkers() {
-    // Clear old markers
     editMarkers.forEach(m => m.remove());
     editMarkers = [];
 
-    // Rebuild endpoint markers
     for (let i = 0; i < pathPoints.length; i++) {
         const marker = L.marker(pathPoints[i], {
             draggable: true,
@@ -265,14 +255,13 @@ function refreshEditMarkers() {
         });
 
         marker.on('dragend', () => {
-            saveEditState();           // Save only after drag ends
-            refreshEditMarkers();      // Rebuild markers (without saving again immediately)
+            saveEditState();
+            refreshEditMarkers();
         });
 
         editMarkers.push(marker);
     }
 
-    // Rebuild midpoint markers
     for (let i = 0; i < pathPoints.length - 1; i++) {
         const midLat = (pathPoints[i].lat + pathPoints[i + 1].lat) / 2;
         const midLng = (pathPoints[i].lng + pathPoints[i + 1].lng) / 2;
@@ -298,7 +287,7 @@ function refreshEditMarkers() {
         midMarker.on('dragend', (e) => {
             pathPoints.splice(tempPointIndex, 0, e.target.getLatLng());
             if (mainPath) mainPath.setLatLngs(pathPoints);
-            saveEditState();           // Save only after successful add
+            saveEditState();
             refreshEditMarkers();
         });
 
@@ -307,9 +296,7 @@ function refreshEditMarkers() {
 }
 
 function undoEdit() {
-    if (editUndoStack.length <= 1) {
-        return;
-    }
+    if (editUndoStack.length <= 1) return;
     editUndoStack.pop();
 
     const previousSerialized = editUndoStack[editUndoStack.length - 1];
@@ -320,7 +307,7 @@ function undoEdit() {
     if (mainPath) mainPath.setLatLngs(pathPoints);
     totalDistance = calculateDistance(pathPoints);
 
-    refreshEditMarkers();   // Rebuild markers
+    refreshEditMarkers();
 }
 
 function enterEditMode() {
@@ -371,7 +358,6 @@ function startPermanentLocationWatch() {
             if (isNavigating) {
                 const distToUpcoming = rawPos.distanceTo(pathPoints[currentWaypointIndex]);
 
-                // 1. ANNOUNCE TURN LOGIC (Trigger between 15m and 35m)
                 if (!hasAnnouncedTurn && distToUpcoming <= TURN_ANNOUNCE_THRESHOLD && currentWaypointIndex < pathPoints.length - 1) {
                     const pPrev = pathPoints[currentWaypointIndex - 1];
                     const pCurr = pathPoints[currentWaypointIndex];
@@ -380,16 +366,14 @@ function startPermanentLocationWatch() {
                     const direction = getTurnDirection(pPrev, pCurr, pNext);
                     if (direction) announceTurn(direction);
                     
-                    hasAnnouncedTurn = true; // Prevent spamming
+                    hasAnnouncedTurn = true;
                 }
 
-                // 2. WAYPOINT PROGRESSION CHECK
                 while (currentWaypointIndex < pathPoints.length && rawPos.distanceTo(pathPoints[currentWaypointIndex]) < WAYPOINT_REACHED_THRESHOLD) {
                     currentWaypointIndex++;
-                    hasAnnouncedTurn = false; // Reset for the next waypoint
+                    hasAnnouncedTurn = false;
                 }
 
-                // 3. COMPLETION CHECK
                 if (currentWaypointIndex >= pathPoints.length) {
                     updateInfo(totalDistance, pos.coords.speed, acc, 0);
                     walkedPath.setLatLngs(pathPoints);
@@ -402,21 +386,18 @@ function startPermanentLocationWatch() {
                     return; 
                 }
 
-                // 4. PROJECT ONTO ACTIVE SEGMENT
                 const targetPt = pathPoints[currentWaypointIndex];
                 const prevPt = pathPoints[currentWaypointIndex - 1];
                 const projection = closestPointOnSegment(rawPos, prevPt, targetPt);
                 const projPt = projection.point;
                 const distToPath = rawPos.distanceTo(projPt);
 
-                // 5. CALCULATE TRAVELED DISTANCE
                 let traveledSoFar = 0;
                 for (let i = 0; i < currentWaypointIndex - 1; i++) {
                     traveledSoFar += pathPoints[i].distanceTo(pathPoints[i + 1]);
                 }
                 traveledSoFar += prevPt.distanceTo(projPt);
 
-                // 6. UPDATE MAP VISUALS
                 const walkedPts = pathPoints.slice(0, currentWaypointIndex);
                 walkedPts.push(projPt);
                 walkedPath.setLatLngs(walkedPts);
@@ -449,7 +430,6 @@ async function enterFullscreen() {
     }
 }
 
-// NEW: Helper to create a tile layer from config
 function createTileLayer(config) {
     return L.tileLayer(config.url, {
         attribution: config.attribution,
@@ -458,17 +438,12 @@ function createTileLayer(config) {
     });
 }
 
-// NEW: Switch between map layers
 function switchMapLayer(layerId) {
     const config = availableLayers.find(l => l.id === layerId);
     if (!config || layerId === activeLayerId) return;
 
-    // Remove old layer
-    if (currentTileLayer) {
-        currentTileLayer.remove();
-    }
+    if (currentTileLayer) currentTileLayer.remove();
 
-    // Create and add new layer
     currentTileLayer = createTileLayer(config);
     currentTileLayer.addTo(map);
 
@@ -476,7 +451,6 @@ function switchMapLayer(layerId) {
     localStorage.setItem('preferredLayer', layerId);
 }
 
-// NEW: Render the list of layers inside the modal
 function renderLayerOptions() {
     const container = document.getElementById('layer-list');
     if (!container) return;
@@ -509,14 +483,13 @@ function renderLayerOptions() {
 
         option.addEventListener('click', () => {
             switchMapLayer(layer.id);
-            toggleLayers(); // close modal
+            toggleLayers();
         });
 
         container.appendChild(option);
     });
 }
 
-// NEW: Open / close the layers modal
 function toggleLayers() {
     const panel = document.getElementById('layers-panel');
     if (!panel) return;
@@ -533,7 +506,6 @@ function initializeApp() {
     if (map) return;
     map = L.map('map', { zoomControl: false }).setView([60.20911396893135, 24.955160312780436], 13);
 
-    // NEW: Load last used layer (or default to Voyager)
     const savedLayerId = localStorage.getItem('preferredLayer') || 'voyager';
     const initialConfig = availableLayers.find(l => l.id === savedLayerId) || availableLayers[0];
     
@@ -659,7 +631,6 @@ function clearPath() {
 async function startNavigation() {
     if (pathPoints.length < 2) return;
     
-    // Kick off all background survival tactics on user gesture
     heartbeatAudio.play().catch(e => console.log("Heartbeat blocked", e));
     initMediaSession();
     await requestWakeLock();
