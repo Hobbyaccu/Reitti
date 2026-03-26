@@ -12,7 +12,9 @@ let totalDistance = 0;
 let hasEnteredFullscreen = false;
 let editMarkers = [];
 let isEditing = false;
-let currentWaypointIndex = 1; 
+let currentWaypointIndex = 1;
+let maxReachedWaypointIndex = 0;
+let isClosedLoop = false;
 let wakeLock = null;
 let hasAnnouncedTurn = false;
 let editUndoStack = [];
@@ -116,6 +118,12 @@ function getTurnDirection(pPrev, pCurr, pNext) {
     if (angle < 20) return null;
 
     return cross > 0 ? 'Left' : 'Right';
+}
+
+// --- HELPER: Determine if the path is a closed loop ---
+function updateIsClosedLoop() {
+    isClosedLoop = pathPoints.length >= 3 && 
+                  pathPoints[0].distanceTo(pathPoints[pathPoints.length - 1]) < LOOP_SNAP_THRESHOLD;
 }
 
 // --- AUDIO & BACKGROUND HANDLERS ---
@@ -358,6 +366,7 @@ function finishEditing() {
     map.doubleClickZoom.enable();
 
     totalDistance = calculateDistance(pathPoints);
+    updateIsClosedLoop();           // ← important after possible edits
     savePathToStorage();
     setUIState('ready');
 }
@@ -382,28 +391,64 @@ function startPermanentLocationWatch() {
             updateHeading(rawPos, pos.coords.heading);
 
             if (isNavigating) {
-                const distToUpcoming = rawPos.distanceTo(pathPoints[currentWaypointIndex]);
-
-                if (!hasAnnouncedTurn && distToUpcoming <= TURN_ANNOUNCE_THRESHOLD && currentWaypointIndex < pathPoints.length - 1) {
-                    const pPrev = pathPoints[currentWaypointIndex - 1];
-                    const pCurr = pathPoints[currentWaypointIndex];
-                    const pNext = pathPoints[currentWaypointIndex + 1];
-                    
-                    const direction = getTurnDirection(pPrev, pCurr, pNext);
-                    if (direction) announceTurn(direction);
-                    
-                    hasAnnouncedTurn = true;
+                // === UPDATED PROGRESS LOGIC ===
+                // 1. Turn announcement using current "next" waypoint (before any advance)
+                let nextTargetIndex = maxReachedWaypointIndex + 1;
+                if (nextTargetIndex < pathPoints.length) {
+                    const distToUpcoming = rawPos.distanceTo(pathPoints[nextTargetIndex]);
+                    if (!hasAnnouncedTurn && 
+                        distToUpcoming <= TURN_ANNOUNCE_THRESHOLD && 
+                        nextTargetIndex < pathPoints.length - 1) {
+                        
+                        const pPrev = pathPoints[nextTargetIndex - 1];
+                        const pCurr = pathPoints[nextTargetIndex];
+                        const pNext = pathPoints[nextTargetIndex + 1];
+                        
+                        const direction = getTurnDirection(pPrev, pCurr, pNext);
+                        if (direction) announceTurn(direction);
+                        
+                        hasAnnouncedTurn = true;
+                    }
                 }
 
-                while (currentWaypointIndex < pathPoints.length && rawPos.distanceTo(pathPoints[currentWaypointIndex]) < WAYPOINT_REACHED_THRESHOLD) {
-                    currentWaypointIndex++;
+                // 2. Advance maxReachedWaypointIndex (allows joining anywhere except special last-point rule for loops)
+                let maxReachedUpdated = false;
+                const oldMax = maxReachedWaypointIndex;
+
+                for (let i = maxReachedWaypointIndex + 1; i < pathPoints.length; i++) {
+                    if (rawPos.distanceTo(pathPoints[i]) < WAYPOINT_REACHED_THRESHOLD) {
+                        let canReach = true;
+
+                        if (i === pathPoints.length - 1) {
+                            // Last point is special ONLY on closed loops
+                            if (isClosedLoop) {
+                                const required = Math.floor(0.3 * pathPoints.length);
+                                if (maxReachedWaypointIndex < required) {
+                                    canReach = false;
+                                }
+                            }
+                            // Non-loop paths can always reach the true end point
+                        }
+
+                        if (canReach) {
+                            maxReachedWaypointIndex = Math.max(maxReachedWaypointIndex, i);
+                            maxReachedUpdated = true;
+                        }
+                    }
+                }
+
+                if (maxReachedUpdated) {
                     hasAnnouncedTurn = false;
                 }
 
-                if (currentWaypointIndex >= pathPoints.length) {
+                // 3. Check for route completion
+                if (maxReachedWaypointIndex >= pathPoints.length - 1) {
                     updateInfo(totalDistance, pos.coords.speed, acc, 0);
                     walkedPath.setLatLngs(pathPoints);
-                    if (offPathLine) { offPathLine.remove(); offPathLine = null; }
+                    if (offPathLine) { 
+                        offPathLine.remove(); 
+                        offPathLine = null; 
+                    }
                     
                     setTimeout(() => {
                         alert("🎉 You've reached the end! Great job!");
@@ -412,25 +457,40 @@ function startPermanentLocationWatch() {
                     return; 
                 }
 
+                // 4. Update current target and compute progress on the active segment
+                currentWaypointIndex = maxReachedWaypointIndex + 1;
+
+                const prevPt = pathPoints[maxReachedWaypointIndex];
                 const targetPt = pathPoints[currentWaypointIndex];
-                const prevPt = pathPoints[currentWaypointIndex - 1];
+
                 const projection = closestPointOnSegment(rawPos, prevPt, targetPt);
                 const projPt = projection.point;
                 const distToPath = rawPos.distanceTo(projPt);
 
+                // Traveled distance = full segments up to last reached waypoint + partial current segment
                 let traveledSoFar = 0;
-                for (let i = 0; i < currentWaypointIndex - 1; i++) {
+                for (let i = 0; i < maxReachedWaypointIndex; i++) {
                     traveledSoFar += pathPoints[i].distanceTo(pathPoints[i + 1]);
                 }
                 traveledSoFar += prevPt.distanceTo(projPt);
 
-                const walkedPts = pathPoints.slice(0, currentWaypointIndex);
+                // Walked path visualization (all points up to last reached + live projection)
+                const walkedPts = pathPoints.slice(0, maxReachedWaypointIndex + 1);
                 walkedPts.push(projPt);
                 walkedPath.setLatLngs(walkedPts);
 
+                // Off-path indicator
                 if (distToPath > OFF_PATH_THRESHOLD) {
-                    if (!offPathLine) offPathLine = L.polyline([rawPos, projPt], { color: '#ff3b30', weight: 3, opacity: 0.8, dashArray: '6, 6' }).addTo(map);
-                    else offPathLine.setLatLngs([rawPos, projPt]);
+                    if (!offPathLine) {
+                        offPathLine = L.polyline([rawPos, projPt], { 
+                            color: '#ff3b30', 
+                            weight: 3, 
+                            opacity: 0.8, 
+                            dashArray: '6, 6' 
+                        }).addTo(map);
+                    } else {
+                        offPathLine.setLatLngs([rawPos, projPt]);
+                    }
                 } else if (offPathLine) { 
                     offPathLine.remove(); 
                     offPathLine = null; 
@@ -617,6 +677,7 @@ function finishDrawing() {
         }
     }
 
+    updateIsClosedLoop();   // ← record loop status for navigation logic
     isDrawing = false;
     map.doubleClickZoom.enable();
     totalDistance = calculateDistance(pathPoints);
@@ -633,6 +694,7 @@ function loadSavedPath() {
     if (mainPath) mainPath.remove();
     mainPath = L.polyline(pathPoints, { color: '#007aff', weight: 6, opacity: 0.85 }).addTo(map);
 
+    updateIsClosedLoop();   // ← important for saved loops
     totalDistance = calculateDistance(pathPoints);
     map.fitBounds(mainPath.getBounds(), { padding: [50, 50] });
     setUIState('ready');
@@ -650,6 +712,8 @@ function clearEverything() {
     pathPoints = [];
     totalDistance = 0;
     currentWaypointIndex = 1;
+    maxReachedWaypointIndex = 0;
+    isClosedLoop = false;
     isDrawing = false;
     isNavigating = false;
     if (map) map.doubleClickZoom.enable();
@@ -672,10 +736,13 @@ async function startNavigation() {
     await requestWakeLock();
     hasAnnouncedTurn = false;
 
+    // Reset progress tracking for this navigation session
+    maxReachedWaypointIndex = 0;
+    currentWaypointIndex = 1;
+
     if (mainPath) mainPath.setStyle({ color: '#8e8e93', weight: 5, opacity: 0.6 });
     walkedPath = L.polyline([pathPoints[0]], { color: '#34c759', weight: 8, opacity: 1 }).addTo(map);
 
-    currentWaypointIndex = 1; 
     isNavigating = true;
     updateInfo(0, 0, 0, 0);
     setUIState('navigating');
