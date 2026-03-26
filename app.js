@@ -21,6 +21,9 @@ let editUndoStack = [];
 let currentTileLayer = null;
 let activeLayerId = 'voyager';
 
+// NEW: Sound toggle (heartbeat + turn announcements)
+let soundEnabled = true;
+
 const availableLayers = [
     {
         id: 'voyager',
@@ -34,7 +37,6 @@ const availableLayers = [
         id: 'dark',
         name: 'Dark',
         icon: '🌙',
-        // FIXED: Using the working dark_all endpoint (dark_matter was removed by CARTO)
         url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
         subdomains: 'abcd'
@@ -140,7 +142,31 @@ function initMediaSession() {
     }
 }
 
+// NEW: Toggle sound (affects heartbeat + turn announcements)
+function updateSoundButton() {
+    const btn = document.getElementById('sound-btn');
+    if (btn) {
+        btn.textContent = soundEnabled ? '🔊' : '🔇';
+    }
+}
+
+function toggleSound() {
+    soundEnabled = !soundEnabled;
+    localStorage.setItem('soundEnabled', soundEnabled.toString());
+    updateSoundButton();
+
+    // If currently navigating, start/stop the heartbeat immediately
+    if (isNavigating) {
+        if (soundEnabled) {
+            heartbeatAudio.play().catch(e => console.log("Heartbeat blocked", e));
+        } else {
+            heartbeatAudio.pause();
+        }
+    }
+}
+
 function announceTurn(direction) {
+    if (!soundEnabled) return;   // ← muted = no voice
     console.log(`🔊 Announcing Turn: ${direction}`);
     const sound = new Audio(`${direction}.mp3`);
     sound.play().catch(e => console.log("Audio play blocked", e));
@@ -513,6 +539,13 @@ function initializeApp() {
     currentTileLayer.addTo(map);
     activeLayerId = initialConfig.id;
 
+    // NEW: Load saved sound preference
+    const savedSound = localStorage.getItem('soundEnabled');
+    if (savedSound !== null) {
+        soundEnabled = savedSound === 'true';
+    }
+    updateSoundButton();
+
     startPermanentLocationWatch();
 
     navigator.geolocation.getCurrentPosition(
@@ -631,7 +664,10 @@ function clearPath() {
 async function startNavigation() {
     if (pathPoints.length < 2) return;
     
-    heartbeatAudio.play().catch(e => console.log("Heartbeat blocked", e));
+    // NEW: Only start heartbeat if sound is enabled
+    if (soundEnabled) {
+        heartbeatAudio.play().catch(e => console.log("Heartbeat blocked", e));
+    }
     initMediaSession();
     await requestWakeLock();
     hasAnnouncedTurn = false;
