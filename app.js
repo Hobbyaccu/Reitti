@@ -17,6 +17,37 @@ let wakeLock = null;
 let hasAnnouncedTurn = false;
 let editUndoStack = [];
 
+// NEW: Map layers management
+let currentTileLayer = null;
+let activeLayerId = 'voyager';
+
+const availableLayers = [
+    {
+        id: 'voyager',
+        name: 'Street',
+        icon: '🛣️',
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd'
+    },
+    {
+        id: 'dark',
+        name: 'Dark',
+        icon: '🌙',
+        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_matter/{z}/{x}/{y}.png',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd'
+    },
+    {
+        id: 'satellite',
+        name: 'Satellite',
+        icon: '🛰️',
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: 'Tiles &copy; Esri — Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
+        subdomains: ''
+    }
+];
+
 // silent audio.. idk?
 const silentWavData = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 const heartbeatAudio = new Audio(silentWavData);
@@ -418,15 +449,97 @@ async function enterFullscreen() {
     }
 }
 
+// NEW: Helper to create a tile layer from config
+function createTileLayer(config) {
+    return L.tileLayer(config.url, {
+        attribution: config.attribution,
+        subdomains: config.subdomains || 'abcd',
+        maxZoom: 19
+    });
+}
+
+// NEW: Switch between map layers
+function switchMapLayer(layerId) {
+    const config = availableLayers.find(l => l.id === layerId);
+    if (!config || layerId === activeLayerId) return;
+
+    // Remove old layer
+    if (currentTileLayer) {
+        currentTileLayer.remove();
+    }
+
+    // Create and add new layer
+    currentTileLayer = createTileLayer(config);
+    currentTileLayer.addTo(map);
+
+    activeLayerId = layerId;
+    localStorage.setItem('preferredLayer', layerId);
+}
+
+// NEW: Render the list of layers inside the modal
+function renderLayerOptions() {
+    const container = document.getElementById('layer-list');
+    if (!container) return;
+    container.innerHTML = '';
+
+    availableLayers.forEach(layer => {
+        const isActive = layer.id === activeLayerId;
+
+        const option = document.createElement('div');
+        option.style.cssText = `
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            margin: 6px 8px;
+            border-radius: 14px;
+            background: ${isActive ? '#f0f8ff' : '#f8f9fa'};
+            border: 2px solid ${isActive ? '#007aff' : 'transparent'};
+            cursor: pointer;
+            transition: all 0.2s ease;
+        `;
+        
+        option.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 14px;">
+                <span style="font-size: 28px;">${layer.icon}</span>
+                <span style="font-size: 1.1rem; font-weight: 600;">${layer.name}</span>
+            </div>
+            ${isActive ? `<span style="color: #007aff; font-size: 22px;">✅</span>` : ''}
+        `;
+
+        option.addEventListener('click', () => {
+            switchMapLayer(layer.id);
+            toggleLayers(); // close modal
+        });
+
+        container.appendChild(option);
+    });
+}
+
+// NEW: Open / close the layers modal
+function toggleLayers() {
+    const panel = document.getElementById('layers-panel');
+    if (!panel) return;
+
+    if (panel.style.display === 'flex') {
+        panel.style.display = 'none';
+    } else {
+        renderLayerOptions();
+        panel.style.display = 'flex';
+    }
+}
+
 function initializeApp() {
     if (map) return;
     map = L.map('map', { zoomControl: false }).setView([60.20911396893135, 24.955160312780436], 13);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        subdomains: 'abcd',
-        maxZoom: 19
-    }).addTo(map);
+    // NEW: Load last used layer (or default to Voyager)
+    const savedLayerId = localStorage.getItem('preferredLayer') || 'voyager';
+    const initialConfig = availableLayers.find(l => l.id === savedLayerId) || availableLayers[0];
+    
+    currentTileLayer = createTileLayer(initialConfig);
+    currentTileLayer.addTo(map);
+    activeLayerId = initialConfig.id;
 
     startPermanentLocationWatch();
 
